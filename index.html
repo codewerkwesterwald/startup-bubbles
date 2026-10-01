@@ -547,6 +547,26 @@ function IdeenWerkstatt({ userEmail, onSignOut }) {
     setMilestoneText("");
   }
 
+  function promoteToProjectManually() {
+    if (!editId) return;
+    let finalDraft = draft;
+    if (milestoneText.trim()) {
+      const m = { id: uid(), text: milestoneText.trim(), date: milestoneDate || new Date().toISOString().slice(0, 10) };
+      finalDraft = { ...draft, milestones: [...(draft.milestones || []), m] };
+    }
+    const original = ideas.find((i) => i.id === editId);
+    const merged = { ...finalDraft, id: editId, createdAt: original ? original.createdAt : Date.now() };
+    delete merged.topScorerSince;
+    const score = computeScore(merged);
+    const promoted = { ...merged, promotedAt: Date.now(), promotedScore: score };
+    persist(ideas.filter((i) => i.id !== editId));
+    persistProjects([...projects, promoted]);
+    setShowForm(false);
+    setDraft(emptyDraft());
+    setEditId(null);
+    setMilestoneText("");
+  }
+
   function removeIdea(id) {
     persist(ideas.filter((i) => i.id !== id));
   }
@@ -1095,11 +1115,17 @@ function IdeenWerkstatt({ userEmail, onSignOut }) {
           color-scheme: light;
         }
         .milestone-add-row .btn-secondary { padding: 8px 14px; white-space: nowrap; }
-        .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px; }
+        .modal-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 22px; gap: 10px; flex-wrap: wrap; }
+        .modal-actions-right { display: flex; gap: 10px; }
         .btn-secondary {
           background: none; border: 1px solid var(--line); color: var(--ink-dim);
           padding: 10px 18px; border-radius: 999px; cursor: pointer; font-family: 'Nunito', sans-serif; font-size: 13.5px; font-weight: 700;
         }
+        .btn-project {
+          background: rgba(255,201,74,0.2); border: none; color: #8A5A00; font-weight: 700;
+          padding: 10px 16px; border-radius: 999px; cursor: pointer; font-family: 'Nunito', sans-serif; font-size: 13px;
+        }
+        .btn-project:hover { background: rgba(255,201,74,0.32); }
         .btn-primary {
           background: var(--navy); border: none; color: #fff; font-weight: 700;
           padding: 10px 20px; border-radius: 999px; cursor: pointer; font-family: 'Nunito', sans-serif; font-size: 13.5px;
@@ -1670,10 +1696,19 @@ function IdeenWerkstatt({ userEmail, onSignOut }) {
               </select>
             </div>
             <div className="modal-actions">
-              <button className="btn-secondary" onClick={() => setShowForm(false)}>Abbrechen</button>
-              <button className="btn-primary" onClick={saveDraft} disabled={!draft.title.trim()}>
-                {editId ? "Speichern" : "Idee anlegen"}
-              </button>
+              <div>
+                {editId && (
+                  <button className="btn-project" onClick={promoteToProjectManually} title="Diese Idee direkt als Projekt markieren">
+                    🏆 Zum Projekt machen
+                  </button>
+                )}
+              </div>
+              <div className="modal-actions-right">
+                <button className="btn-secondary" onClick={() => setShowForm(false)}>Abbrechen</button>
+                <button className="btn-primary" onClick={saveDraft} disabled={!draft.title.trim()}>
+                  {editId ? "Speichern" : "Idee anlegen"}
+                </button>
+              </div>
             </div>
           </div>
         </div>
