@@ -371,6 +371,7 @@ function IdeenWerkstatt({ userEmail, onSignOut }) {
   const [showForm, setShowForm] = useState(false);
   const [draft, setDraft] = useState(emptyDraft());
   const [editId, setEditId] = useState(null);
+  const [editTarget, setEditTarget] = useState("idea");
   const [filter, setFilter] = useState(new Set());
   const [error, setError] = useState(null);
   const [viewMode, setViewMode] = useState("bubbles");
@@ -502,6 +503,7 @@ function IdeenWerkstatt({ userEmail, onSignOut }) {
   function openNewForm() {
     setDraft(emptyDraft());
     setEditId(null);
+    setEditTarget("idea");
     setShowForm(true);
     setModalEvalExpanded(true);
     setMilestoneText("");
@@ -512,8 +514,19 @@ function IdeenWerkstatt({ userEmail, onSignOut }) {
   function openEditForm(idea, collapseEval) {
     setDraft({ ...emptyDraft(), ...idea, milestones: idea.milestones || [] });
     setEditId(idea.id);
+    setEditTarget("idea");
     setShowForm(true);
     setModalEvalExpanded(!collapseEval);
+    setMilestoneText("");
+    setMilestoneDate(new Date().toISOString().slice(0, 10));
+  }
+
+  function openProjectEdit(project) {
+    setDraft({ ...emptyDraft(), ...project, milestones: project.milestones || [] });
+    setEditId(project.id);
+    setEditTarget("project");
+    setShowForm(true);
+    setModalEvalExpanded(true);
     setMilestoneText("");
     setMilestoneDate(new Date().toISOString().slice(0, 10));
   }
@@ -543,7 +556,17 @@ function IdeenWerkstatt({ userEmail, onSignOut }) {
       const m = { id: uid(), text: milestoneText.trim(), date: milestoneDate || new Date().toISOString().slice(0, 10) };
       finalDraft = { ...draft, milestones: [...(draft.milestones || []), m] };
     }
-    if (editId) {
+    if (editTarget === "project" && editId) {
+      const original = projects.find((p) => p.id === editId);
+      const next = projects.map((p) => (p.id === editId ? {
+        ...finalDraft,
+        id: editId,
+        createdAt: original ? original.createdAt : p.createdAt,
+        promotedAt: original ? original.promotedAt : p.promotedAt,
+        promotedScore: original ? original.promotedScore : p.promotedScore,
+      } : p));
+      persistProjects(next);
+    } else if (editId) {
       const next = ideas.map((i) => (i.id === editId ? { ...finalDraft, id: editId, createdAt: i.createdAt } : i));
       persist(next);
     } else {
@@ -553,11 +576,32 @@ function IdeenWerkstatt({ userEmail, onSignOut }) {
     setShowForm(false);
     setDraft(emptyDraft());
     setEditId(null);
+    setEditTarget("idea");
+    setMilestoneText("");
+  }
+
+  function demoteToIdeaFromModal() {
+    if (!editId) return;
+    let finalDraft = draft;
+    if (milestoneText.trim()) {
+      const m = { id: uid(), text: milestoneText.trim(), date: milestoneDate || new Date().toISOString().slice(0, 10) };
+      finalDraft = { ...draft, milestones: [...(draft.milestones || []), m] };
+    }
+    const original = projects.find((p) => p.id === editId);
+    const merged = { ...finalDraft, id: editId, createdAt: original ? original.createdAt : Date.now(), topScorerSince: null };
+    delete merged.promotedAt;
+    delete merged.promotedScore;
+    persistProjects(projects.filter((p) => p.id !== editId));
+    persist([...ideas, merged]);
+    setShowForm(false);
+    setDraft(emptyDraft());
+    setEditId(null);
+    setEditTarget("idea");
     setMilestoneText("");
   }
 
   function promoteToProjectManually() {
-    if (!editId) return;
+    if (!editId || editTarget !== "idea") return;
     let finalDraft = draft;
     if (milestoneText.trim()) {
       const m = { id: uid(), text: milestoneText.trim(), date: milestoneDate || new Date().toISOString().slice(0, 10) };
@@ -573,6 +617,7 @@ function IdeenWerkstatt({ userEmail, onSignOut }) {
     setShowForm(false);
     setDraft(emptyDraft());
     setEditId(null);
+    setEditTarget("idea");
     setMilestoneText("");
   }
 
@@ -1202,6 +1247,7 @@ function IdeenWerkstatt({ userEmail, onSignOut }) {
         .project-card-top { display: flex; align-items: center; gap: 10px; }
         .project-card-title {
           font-family: 'Baloo 2', cursive; font-size: 17px; font-weight: 600; color: var(--ink); flex: 1;
+          cursor: pointer;
         }
         .project-card-desc { color: var(--ink-dim); font-size: 13.5px; line-height: 1.5; margin: 8px 0 0 36px; }
         .project-card-meta {
@@ -1555,9 +1601,9 @@ function IdeenWerkstatt({ userEmail, onSignOut }) {
                   <div className="project-card" key={p.id}>
                     <div className="project-card-top">
                       <span className="status-avatar" style={{ background: `${st.color}33` }}>{st.icon}</span>
-                      <div className="project-card-title">{p.title}</div>
-                      <button className="link-btn" onClick={() => demoteToIdea(p.id)}>Zurück zu Ideen</button>
-                      <button className="link-btn" onClick={() => removeProject(p.id)}>Löschen</button>
+                      <div className="project-card-title" onClick={() => openProjectEdit(p)}>{p.title}</div>
+                      <button className="link-btn" onClick={(e) => { e.stopPropagation(); demoteToIdea(p.id); }}>Zurück zu Ideen</button>
+                      <button className="link-btn" onClick={(e) => { e.stopPropagation(); removeProject(p.id); }}>Löschen</button>
                     </div>
                     {p.description && <p className="project-card-desc">{p.description}</p>}
                     <div className="project-card-meta">
@@ -1575,7 +1621,7 @@ function IdeenWerkstatt({ userEmail, onSignOut }) {
       {showForm && (
         <div className="modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) setShowForm(false); }}>
           <div className="modal">
-            <h2>{editId ? "Idee bearbeiten" : "Neue Idee"}</h2>
+            <h2>{editTarget === "project" ? "Projekt bearbeiten" : (editId ? "Idee bearbeiten" : "Neue Idee")}</h2>
             <div className="field">
               <label>Titel</label>
               <input
@@ -1707,9 +1753,14 @@ function IdeenWerkstatt({ userEmail, onSignOut }) {
             </div>
             <div className="modal-actions">
               <div>
-                {editId && (
+                {editTarget === "idea" && editId && (
                   <button className="btn-project" onClick={promoteToProjectManually} title="Diese Idee direkt als Projekt markieren">
                     🏆 Zum Projekt machen
+                  </button>
+                )}
+                {editTarget === "project" && (
+                  <button className="btn-project" onClick={demoteToIdeaFromModal} title="Dieses Projekt zurück zu den Ideen verschieben">
+                    ↩️ Zurück zu Ideen
                   </button>
                 )}
               </div>
