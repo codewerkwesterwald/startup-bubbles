@@ -293,6 +293,59 @@ function shade(hex, percent) {
 
 const STORAGE_KEY = "ideenwerkstatt:ideas";
 const PROJECTS_STORAGE_KEY = "ideenwerkstatt:projects";
+const GOALS_STORAGE_KEY = "ideenwerkstatt:goals";
+
+const GOAL_QUESTIONS = [
+  {
+    key: "ideaType",
+    question: "Welche Art von Geschäftsidee soll es sein?",
+    type: "single",
+    options: [
+      { value: "side_hustle", label: "Side Hustle (nebenbei)" },
+      { value: "hauptgewerbe", label: "Hauptgewerbe (Vollzeit)" },
+    ],
+  },
+  {
+    key: "monthlyIncome",
+    question: "Welchen monatlichen Verdienst strebst du an?",
+    type: "single",
+    options: [
+      { value: "<1000", label: "Unter 1.000 €" },
+      { value: "1000-5000", label: "1.000 – 5.000 €" },
+      { value: "5000-20000", label: "5.000 – 20.000 €" },
+      { value: ">20000", label: "Über 20.000 €" },
+    ],
+  },
+  {
+    key: "industries",
+    question: "In welchem Bereich soll die Idee sein?",
+    type: "multi",
+    options: [
+      { value: "kfz", label: "KFZ" },
+      { value: "immobilien", label: "Immobilien" },
+      { value: "gastro", label: "Gastro" },
+      { value: "technologie", label: "Technologie / Software" },
+      { value: "gesundheit", label: "Gesundheit" },
+      { value: "bildung", label: "Bildung" },
+      { value: "ecommerce", label: "E-Commerce" },
+      { value: "sonstiges", label: "Sonstiges" },
+    ],
+  },
+  {
+    key: "timeframe",
+    question: "In welchem Zeitrahmen soll die Idee stehen?",
+    type: "single",
+    options: [
+      { value: "<6m", label: "Unter 6 Monaten" },
+      { value: "6-12m", label: "6 – 12 Monate" },
+      { value: ">1y", label: "Über 1 Jahr" },
+    ],
+  },
+];
+
+function emptyGoals() {
+  return { ideaType: "", monthlyIncome: "", industries: [], timeframe: "", onboarded: false };
+}
 const TOP_SCORER_PROJECT_MS = 28 * 24 * 60 * 60 * 1000; // 4 Wochen durchgehend Topscorer
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
@@ -367,6 +420,9 @@ const emptyDraft = () => ({
 function IdeenWerkstatt({ userEmail, onSignOut }) {
   const [ideas, setIdeas] = useState([]);
   const [projects, setProjects] = useState([]);
+  const [goals, setGoals] = useState(null);
+  const [goalsDraft, setGoalsDraft] = useState(emptyGoals());
+  const [onboardStep, setOnboardStep] = useState(0);
   const [loaded, setLoaded] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [draft, setDraft] = useState(emptyDraft());
@@ -409,6 +465,14 @@ function IdeenWerkstatt({ userEmail, onSignOut }) {
         }
       } catch (e) {
         // noch keine Projekte vorhanden
+      }
+      try {
+        const resG = await window.storage.get(GOALS_STORAGE_KEY, false);
+        if (resG && resG.value) {
+          setGoals(JSON.parse(resG.value));
+        }
+      } catch (e) {
+        // noch keine Ziele gesetzt — Onboarding wird gezeigt
       } finally {
         setLoaded(true);
       }
@@ -435,6 +499,47 @@ function IdeenWerkstatt({ userEmail, onSignOut }) {
     } catch (e) {
       setError("Speichern hat nicht geklappt. Änderung bleibt nur lokal.");
     }
+  }
+
+  async function persistGoals(next) {
+    setGoals(next);
+    try {
+      const res = await window.storage.set(GOALS_STORAGE_KEY, JSON.stringify(next), false);
+      if (!res) setError("Speichern hat nicht geklappt. Änderung bleibt nur lokal.");
+      else setError(null);
+    } catch (e) {
+      setError("Speichern hat nicht geklappt. Änderung bleibt nur lokal.");
+    }
+  }
+
+  function toggleGoalMulti(key, value) {
+    setGoalsDraft((prev) => {
+      const current = prev[key] || [];
+      const next = current.includes(value) ? current.filter((v) => v !== value) : [...current, value];
+      return { ...prev, [key]: next };
+    });
+  }
+
+  function selectGoalSingle(key, value) {
+    setGoalsDraft((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function goalOnboardNext() {
+    if (onboardStep < GOAL_QUESTIONS.length - 1) {
+      setOnboardStep((s) => s + 1);
+    } else {
+      persistGoals({ ...goalsDraft, onboarded: true });
+      setOnboardStep(0);
+    }
+  }
+
+  function goalOnboardSkip() {
+    persistGoals({ ...emptyGoals(), onboarded: true });
+    setOnboardStep(0);
+  }
+
+  function saveGoalsFromTab() {
+    persistGoals({ ...goalsDraft, onboarded: true });
   }
 
   function removeProject(id) {
@@ -848,6 +953,12 @@ function IdeenWerkstatt({ userEmail, onSignOut }) {
   // Wichtig: hängt zusätzlich davon ab, ob die Fläche gerade wirklich im DOM existiert —
   // die entsteht erst, sobald die Ideen geladen sind (filtered.length > 0), nicht schon
   // beim ersten Rendern mit viewMode "bubbles" allein.
+  useEffect(() => {
+    if (goals) setGoalsDraft(goals);
+  }, [goals]);
+
+  const needsOnboarding = loaded && goals === null;
+
   const hasBubbleStage = viewMode === "bubbles" && filtered.length > 0;
 
   useEffect(() => {
@@ -1259,6 +1370,56 @@ function IdeenWerkstatt({ userEmail, onSignOut }) {
           padding: 3px 10px; border-radius: 999px;
         }
 
+        .onboarding-screen {
+          position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center;
+          background: linear-gradient(135deg, #FFF3E0 0%, #FDE7EF 32%, #EEE3FB 62%, #E3F3FF 100%);
+          padding: 24px;
+        }
+        .onboarding-card {
+          background: var(--surface); border-radius: var(--card-radius); box-shadow: var(--card-shadow);
+          padding: 32px 28px; max-width: 420px; width: 100%;
+        }
+        .onboarding-progress { display: flex; gap: 6px; margin-bottom: 20px; justify-content: center; }
+        .onboarding-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--line); }
+        .onboarding-dot-active { background: var(--navy); width: 20px; border-radius: 4px; }
+        .onboarding-dot-done { background: var(--teal); }
+        .onboarding-question {
+          font-family: 'Baloo 2', cursive; font-size: 21px; font-weight: 600; color: var(--ink);
+          margin: 0 0 20px; text-align: center; line-height: 1.3;
+        }
+        .onboarding-options { display: flex; flex-direction: column; gap: 10px; margin-bottom: 24px; }
+        .onboarding-option {
+          background: var(--surface-2); border: 2px solid transparent; color: var(--ink);
+          padding: 13px 16px; border-radius: 14px; font-family: 'Nunito', sans-serif; font-weight: 700;
+          font-size: 14.5px; cursor: pointer; text-align: left;
+        }
+        .onboarding-option-selected { border-color: var(--navy); background: rgba(33,29,51,0.06); }
+        .onboarding-actions { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+        .onboarding-skip {
+          background: none; border: none; color: var(--ink-dim); font-size: 13px; cursor: pointer;
+          font-family: 'Nunito', sans-serif; text-decoration: underline;
+        }
+        .onboarding-next {
+          background: var(--navy); color: #fff; border: none; border-radius: 999px;
+          padding: 11px 22px; font-weight: 700; font-size: 14px; cursor: pointer; font-family: 'Nunito', sans-serif;
+        }
+        .onboarding-next:hover { background: #33304a; }
+
+        .goals-form { max-width: 640px; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
+        .goals-question-block {
+          background: var(--surface); border-radius: var(--card-radius); box-shadow: var(--card-shadow);
+          padding: 18px 20px;
+        }
+        .goals-question-label { font-family: 'Baloo 2', cursive; font-size: 15.5px; color: var(--ink); margin-bottom: 12px; }
+        .goals-option-row { display: flex; flex-wrap: wrap; gap: 8px; }
+        .goals-chip {
+          background: var(--surface-2); border: none; color: var(--ink-dim);
+          padding: 8px 14px; border-radius: 999px; font-size: 13px; font-weight: 600;
+          cursor: pointer; font-family: 'Nunito', sans-serif;
+        }
+        .goals-chip-active { background: var(--navy); color: #fff; }
+        .goals-save-btn { align-self: flex-start; }
+
         .bubble-stage {
           max-width: 920px; margin: 0 auto; position: relative;
           width: 100%; height: 560px; overflow: hidden;
@@ -1382,6 +1543,44 @@ function IdeenWerkstatt({ userEmail, onSignOut }) {
         }
       `}</style>
 
+      {needsOnboarding && (
+        <div className="onboarding-screen">
+          <div className="onboarding-card">
+            <div className="onboarding-progress">
+              {GOAL_QUESTIONS.map((_, i) => (
+                <span key={i} className={`onboarding-dot ${i === onboardStep ? "onboarding-dot-active" : ""} ${i < onboardStep ? "onboarding-dot-done" : ""}`}></span>
+              ))}
+            </div>
+            <h2 className="onboarding-question">{GOAL_QUESTIONS[onboardStep].question}</h2>
+            <div className="onboarding-options">
+              {GOAL_QUESTIONS[onboardStep].options.map((opt) => {
+                const q = GOAL_QUESTIONS[onboardStep];
+                const selected = q.type === "multi"
+                  ? (goalsDraft[q.key] || []).includes(opt.value)
+                  : goalsDraft[q.key] === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    className={`onboarding-option ${selected ? "onboarding-option-selected" : ""}`}
+                    onClick={() => (q.type === "multi" ? toggleGoalMulti(q.key, opt.value) : selectGoalSingle(q.key, opt.value))}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="onboarding-actions">
+              <button className="onboarding-skip" onClick={goalOnboardSkip}>Später ausfüllen</button>
+              <button className="onboarding-next" onClick={goalOnboardNext}>
+                {onboardStep < GOAL_QUESTIONS.length - 1 ? "Weiter →" : "Fertig"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!needsOnboarding && (
+      <>
       {activeTab === "ideen" && (
       <>
       <div className="header">
@@ -1618,6 +1817,42 @@ function IdeenWerkstatt({ userEmail, onSignOut }) {
         </>
       )}
 
+      {activeTab === "ziele" && (
+        <>
+          <div className="header">
+            <div>
+              <h1 className="title">Ziele</h1>
+              <p className="subtitle">Definiere, was du mit deiner Geschäftsidee erreichen möchtest — jederzeit änderbar.</p>
+            </div>
+          </div>
+
+          <div className="goals-form">
+            {GOAL_QUESTIONS.map((q) => (
+              <div className="goals-question-block" key={q.key}>
+                <div className="goals-question-label">{q.question}</div>
+                <div className="goals-option-row">
+                  {q.options.map((opt) => {
+                    const selected = q.type === "multi"
+                      ? (goalsDraft[q.key] || []).includes(opt.value)
+                      : goalsDraft[q.key] === opt.value;
+                    return (
+                      <button
+                        key={opt.value}
+                        className={`goals-chip ${selected ? "goals-chip-active" : ""}`}
+                        onClick={() => (q.type === "multi" ? toggleGoalMulti(q.key, opt.value) : selectGoalSingle(q.key, opt.value))}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+            <button className="btn-primary goals-save-btn" onClick={saveGoalsFromTab}>Ziele speichern</button>
+          </div>
+        </>
+      )}
+
       {showForm && (
         <div className="modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) setShowForm(false); }}>
           <div className="modal">
@@ -1792,11 +2027,20 @@ function IdeenWerkstatt({ userEmail, onSignOut }) {
           <span className="nav-icon">🏆</span>
           <span className="nav-label">Projekte</span>
         </button>
+        <button
+          className={`nav-item ${activeTab === "ziele" ? "nav-item-active" : ""}`}
+          onClick={() => setActiveTab("ziele")}
+        >
+          <span className="nav-icon">🎯</span>
+          <span className="nav-label">Ziele</span>
+        </button>
         <button className="nav-item" onClick={() => showComingSoon("Profil")}>
           <span className="nav-icon">👤</span>
           <span className="nav-label">Profil</span>
         </button>
       </nav>
+      </>
+      )}
     </div>
   );
 }
