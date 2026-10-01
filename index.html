@@ -1,0 +1,1717 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Startup Bubbles</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%AB%A7%3C/text%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23F7F1FE'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle'%3E%F0%9F%AB%A7%3C/text%3E%3C/svg%3E">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Startup Bubbles">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#F7F1FE">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Nunito:wght@400;600;700;800&family=Caveat:wght@600;700&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  html, body { overflow-x: hidden; -webkit-text-size-adjust: 100%; }
+  html, body, #root { margin: 0; padding: 0; min-height: 100%; }
+  body { background: #F7F1FE; }
+  .login-gate {
+    position: fixed; inset: 0; overflow: hidden;
+    background: linear-gradient(135deg, #FFF3E0 0%, #FDE7EF 32%, #EEE3FB 62%, #E3F3FF 100%);
+    font-family: 'Nunito', -apple-system, sans-serif;
+    display: flex; flex-direction: column;
+    padding: max(28px, env(safe-area-inset-top, 0px)) 26px max(28px, env(safe-area-inset-bottom, 0px));
+  }
+  .deco-bubbles { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+  .deco-cluster {
+    position: absolute; left: 50%; top: 30%;
+    width: 300px; height: 340px; transform: translate(-50%, -20%);
+  }
+  .deco-bubble {
+    position: absolute; border-radius: 50%;
+    box-shadow: inset 0 3px 6px rgba(255,255,255,0.45), inset 0 -8px 14px rgba(0,0,0,0.12);
+    animation: deco-float 6s ease-in-out infinite;
+  }
+  @keyframes deco-float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-10px); }
+  }
+  .db-hero {
+    width: 160px; height: 160px; left: 70px; top: 70px;
+    background: radial-gradient(circle at 32% 24%, #FFE9A8 0%, #FFC94A 55%, #E3A420 100%);
+    display: flex; align-items: center; justify-content: center; font-size: 56px;
+    animation-duration: 7s; z-index: 3;
+  }
+  .db-1 { width: 66px; height: 66px; left: 4px; top: 16px; background: radial-gradient(circle at 30% 25%, #B9A9F0, #9B8AE0 60%, #6E5BC4); animation-duration: 5s; z-index: 2; }
+  .db-2 { width: 48px; height: 48px; left: 206px; top: 30px; background: radial-gradient(circle at 30% 25%, #7DE0C2, #06D6A0 60%, #049677); animation-duration: 6.5s; animation-delay: .5s; z-index: 2; }
+  .db-3 { width: 106px; height: 106px; left: 184px; top: 138px; background: radial-gradient(circle at 30% 25%, #8FB6FF, #3A86FF 60%, #1E5FD9); animation-duration: 8s; z-index: 1; }
+  .db-4 { width: 54px; height: 54px; left: 22px; top: 118px; background: radial-gradient(circle at 30% 25%, #FF9DBC, #FF5D8F 60%, #D93E6C); animation-duration: 5.5s; animation-delay: .8s; z-index: 2; }
+  .db-5 { width: 126px; height: 126px; left: 86px; top: 206px; background: radial-gradient(circle at 30% 25%, #8CE8B4, #3DDC84 60%, #23A85E); animation-duration: 7.5s; animation-delay: .3s; z-index: 1; }
+  .db-6 { width: 34px; height: 34px; left: 146px; top: 258px; background: radial-gradient(circle at 30% 25%, #B9A9F0, #9B8AE0 60%, #6E5BC4); animation-duration: 4.5s; z-index: 3; }
+
+  .login-note {
+    position: absolute; left: 50%; top: 30%; z-index: 4;
+    transform: translate(30px, -215px) rotate(-3deg);
+    font-family: 'Caveat', cursive; font-size: 24px; font-weight: 700;
+    color: #4A3F73; line-height: 1.2; text-align: right;
+  }
+  .login-note span { display: block; }
+  .login-note .arrow { font-size: 22px; margin-top: 2px; }
+
+  .login-content { position: relative; z-index: 2; margin-top: auto; }
+  .brand-title {
+    font-family: 'Baloo 2', cursive; font-size: 34px; font-weight: 700;
+    color: #211D33; margin: 0 0 4px;
+  }
+  .brand-tagline { color: #6C6193; font-size: 15px; margin: 0 0 22px; }
+
+  #google-signin-btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    background: #211D33; color: #fff; border: none; border-radius: 999px;
+    padding: 15px 24px; font-family: 'Nunito', sans-serif; font-weight: 700; font-size: 15.5px;
+    cursor: pointer; width: 100%; box-shadow: 0 12px 24px rgba(33,29,51,0.28);
+  }
+  #google-signin-btn:hover { background: #33304a; }
+  #google-signin-btn:disabled { opacity: 0.6; cursor: default; }
+  .login-secondary {
+    text-align: center; margin: 16px 0 0; font-size: 13.5px; color: #6C6193;
+  }
+  .login-secondary button {
+    background: none; border: none; color: #211D33; font-weight: 700; cursor: pointer;
+    font-family: 'Nunito', sans-serif; font-size: 13.5px; text-decoration: underline; padding: 0;
+  }
+  .login-error { color: #FF5D8F; font-size: 12.5px; margin: 14px 0 0; min-height: 16px; text-align: center; }
+
+  @media (max-width: 420px) {
+    .deco-cluster { transform: translate(-50%, -20%) scale(0.82); }
+    .login-note { transform: translate(22px, -176px) rotate(-3deg); font-size: 20px; }
+    .brand-title { font-size: 28px; }
+  }
+</style>
+</head>
+<body>
+<div id="login-gate" class="login-gate">
+  <div class="deco-bubbles">
+    <div class="deco-cluster">
+      <span class="deco-bubble db-1"></span>
+      <span class="deco-bubble db-2"></span>
+      <span class="deco-bubble db-3"></span>
+      <span class="deco-bubble db-4"></span>
+      <span class="deco-bubble db-5"></span>
+      <span class="deco-bubble db-6"></span>
+      <span class="deco-bubble db-hero">💡</span>
+    </div>
+    <div class="login-note">
+      <span>Sammeln</span>
+      <span>Bewerten</span>
+      <span>Entwickeln</span>
+      <span class="arrow">↷</span>
+    </div>
+  </div>
+
+  <div class="login-content">
+    <h1 class="brand-title">Startup Bubbles</h1>
+    <p class="brand-tagline">Deine Ideen. Klarer Fokus.</p>
+    <button id="google-signin-btn">Los geht's →</button>
+    <p class="login-secondary">Schon dabei? <button id="google-signin-btn-secondary">Anmelden</button></p>
+    <p id="login-error" class="login-error"></p>
+  </div>
+</div>
+<div id="root" style="display:none;"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.7/babel.min.js"></script>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import {
+    getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut
+  } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import {
+    getFirestore, doc, getDoc, setDoc, deleteField
+  } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyBKHgOhpR0DkElyWsNxuK0vG-k9oAzLLPY",
+    authDomain: "startup-bubbles.firebaseapp.com",
+    projectId: "startup-bubbles",
+    storageBucket: "startup-bubbles.firebasestorage.app",
+    messagingSenderId: "415245240164",
+    appId: "1:415245240164:web:da6aa97bbed3b6e41cdc71",
+  };
+
+  const firebaseApp = initializeApp(firebaseConfig);
+  const auth = getAuth(firebaseApp);
+  const db = getFirestore(firebaseApp);
+  const provider = new GoogleAuthProvider();
+
+  let currentUser = null;
+  let appMounted = false;
+
+  function sanitizeKey(key) {
+    return key.replace(/[^A-Za-z0-9_]/g, "_");
+  }
+
+  // Ersetzt die Claude-Artifact-Speicher-API durch eine Firestore-Variante,
+  // gebunden an das angemeldete Google-Konto — Daten sind geräteübergreifend verfügbar.
+  window.storage = {
+    async get(key) {
+      if (!currentUser) return null;
+      try {
+        const snap = await getDoc(doc(db, "appData", currentUser.uid));
+        if (!snap.exists()) return null;
+        const data = snap.data();
+        const fieldKey = sanitizeKey(key);
+        if (!(fieldKey in data)) return null;
+        return { key, value: data[fieldKey], shared: false };
+      } catch (e) {
+        console.error("storage.get error", e);
+        return null;
+      }
+    },
+    async set(key, value) {
+      if (!currentUser) return null;
+      try {
+        const fieldKey = sanitizeKey(key);
+        await setDoc(doc(db, "appData", currentUser.uid), { [fieldKey]: value }, { merge: true });
+        return { key, value, shared: false };
+      } catch (e) {
+        console.error("storage.set error", e);
+        return null;
+      }
+    },
+    async delete(key) {
+      if (!currentUser) return null;
+      try {
+        const fieldKey = sanitizeKey(key);
+        await setDoc(doc(db, "appData", currentUser.uid), { [fieldKey]: deleteField() }, { merge: true });
+        return { key, deleted: true, shared: false };
+      } catch (e) {
+        console.error("storage.delete error", e);
+        return null;
+      }
+    },
+    async list(prefix) {
+      if (!currentUser) return null;
+      try {
+        const snap = await getDoc(doc(db, "appData", currentUser.uid));
+        if (!snap.exists()) return { keys: [] };
+        const p = prefix ? sanitizeKey(prefix) : null;
+        const keys = Object.keys(snap.data()).filter((k) => !p || k.startsWith(p));
+        return { keys, prefix, shared: false };
+      } catch (e) {
+        console.error("storage.list error", e);
+        return null;
+      }
+    },
+  };
+
+  function tryMount() {
+    if (!currentUser || appMounted || typeof window.__mountBubblesApp !== "function") return;
+    window.__mountBubblesApp({
+      email: currentUser.email,
+      onSignOut: () => signOut(auth),
+    });
+    appMounted = true;
+  }
+
+  window.addEventListener("bubbles-ready", tryMount);
+
+  const signInBtn = document.getElementById("google-signin-btn");
+  const signInBtnSecondary = document.getElementById("google-signin-btn-secondary");
+  const loginGate = document.getElementById("login-gate");
+  const rootEl = document.getElementById("root");
+  const loginError = document.getElementById("login-error");
+
+  async function handleSignIn() {
+    loginError.textContent = "";
+    signInBtn.disabled = true;
+    try {
+      await signInWithPopup(auth, provider);
+    } catch (e) {
+      loginError.textContent = "Anmeldung fehlgeschlagen. Bitte erneut versuchen.";
+      console.error(e);
+    } finally {
+      signInBtn.disabled = false;
+    }
+  }
+
+  signInBtn.addEventListener("click", handleSignIn);
+  signInBtnSecondary.addEventListener("click", handleSignIn);
+
+  onAuthStateChanged(auth, (user) => {
+    currentUser = user;
+    if (user) {
+      loginGate.style.display = "none";
+      rootEl.style.display = "block";
+      // window.__bubblesReady wird true, sobald das Babel-Skript unten fertig geladen ist
+      if (window.__bubblesReady) {
+        tryMount();
+      }
+    } else {
+      loginGate.style.display = "flex";
+      rootEl.style.display = "none";
+      appMounted = false;
+      rootEl.innerHTML = "";
+    }
+  });
+</script>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useRef } = React;
+
+const STATUS = {
+  idee: { label: "Idee", color: "#9B8AE0", icon: "💡", text: "#fff" },
+  warten: { label: "Warten", color: "#9B9BAE", icon: "⏸️", text: "#fff" },
+  pruefung: { label: "In Prüfung", color: "#FFC93C", icon: "🔍", text: "#211D33" },
+  validiert: { label: "Validiert", color: "#06D6A0", icon: "✅", text: "#0B3B30" },
+  umsetzung: { label: "In Umsetzung", color: "#3A86FF", icon: "🛠️", text: "#fff" },
+  live: { label: "Live", color: "#3DDC84", icon: "🚀", text: "#0B3B22" },
+  verworfen: { label: "Verworfen", color: "#FF5D8F", icon: "🗑️", text: "#fff" },
+};
+
+function hexToRgb(hex) {
+  const h = hex.replace("#", "");
+  const full = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
+  const num = parseInt(full, 16);
+  return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255 };
+}
+
+// percent > 0 hellt Richtung Weiß auf, percent < 0 dunkelt Richtung Schwarz ab
+function shade(hex, percent) {
+  const { r, g, b } = hexToRgb(hex);
+  const target = percent < 0 ? 0 : 255;
+  const p = Math.abs(percent);
+  const mix = (c) => Math.round((target - c) * p + c);
+  return `rgb(${mix(r)}, ${mix(g)}, ${mix(b)})`;
+}
+
+const STORAGE_KEY = "ideenwerkstatt:ideas";
+const PROJECTS_STORAGE_KEY = "ideenwerkstatt:projects";
+const TOP_SCORER_PROJECT_MS = 28 * 24 * 60 * 60 * 1000; // 4 Wochen durchgehend Topscorer
+
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+function lastActivityTime(idea) {
+  const timestamps = (idea.milestones || [])
+    .map((m) => new Date(`${m.date}T00:00:00`).getTime())
+    .filter((t) => !isNaN(t));
+  return timestamps.length ? Math.max(...timestamps) : idea.createdAt;
+}
+
+function recentMilestoneCount(idea) {
+  const cutoff = Date.now() - WEEK_MS;
+  return (idea.milestones || []).filter((m) => {
+    const t = new Date(`${m.date}T00:00:00`).getTime();
+    return !isNaN(t) && t >= cutoff;
+  }).length;
+}
+
+function momentumBonus(idea) {
+  return Math.min(recentMilestoneCount(idea) * 0.5, 2);
+}
+
+// Gegenstück zur Flamme: Sobald seit über einer Woche kein Meilenstein mehr kam
+// (die Flamme also erloschen ist) und eine weitere Woche vergeht, entsteht ein
+// Eisblock. Pro zusätzlicher Woche ohne Aktivität kommt ein weiterer dazu.
+function iceBlockCount(idea) {
+  if (idea.status === "warten") return 0;
+  const elapsed = Date.now() - lastActivityTime(idea);
+  if (elapsed <= WEEK_MS) return 0;
+  const extraWeeks = Math.floor((elapsed - WEEK_MS) / WEEK_MS);
+  return Math.max(0, Math.min(extraWeeks, 6));
+}
+
+function icePenalty(idea) {
+  return iceBlockCount(idea) * 0.5;
+}
+
+function computeScore(idea) {
+  const ease = 11 - idea.effort;
+  const base = (idea.impact * 2 + idea.confidence + ease) / 4;
+  return base + momentumBonus(idea) - icePenalty(idea);
+}
+
+function scoreTier(score) {
+  if (score >= 7.5) return "#06D6A0";
+  if (score >= 5) return "#FFC93C";
+  return "#FF5D8F";
+}
+
+const STALE_MS = WEEK_MS;
+
+function isStale(idea) {
+  if (idea.status === "warten") return false;
+  return Date.now() - lastActivityTime(idea) > STALE_MS;
+}
+
+function uid() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+}
+
+const emptyDraft = () => ({
+  title: "",
+  description: "",
+  impact: 5,
+  effort: 5,
+  confidence: 5,
+  status: "idee",
+  milestones: [],
+});
+
+function IdeenWerkstatt({ userEmail, onSignOut }) {
+  const [ideas, setIdeas] = useState([]);
+  const [projects, setProjects] = useState([]);
+  const [loaded, setLoaded] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  const [draft, setDraft] = useState(emptyDraft());
+  const [editId, setEditId] = useState(null);
+  const [filter, setFilter] = useState(new Set());
+  const [error, setError] = useState(null);
+  const [viewMode, setViewMode] = useState("bubbles");
+  const [modalEvalExpanded, setModalEvalExpanded] = useState(true);
+  const [sortCol, setSortCol] = useState("score");
+  const [sortDir, setSortDir] = useState("desc");
+  const [milestoneText, setMilestoneText] = useState("");
+  const [milestoneDate, setMilestoneDate] = useState("");
+  const [stageSize, setStageSize] = useState({ width: 860, height: 520 });
+  const [comingSoonMsg, setComingSoonMsg] = useState("");
+  const [activeTab, setActiveTab] = useState("ideen");
+  const titleRef = useRef(null);
+  const stageRef = useRef(null);
+  const nodeRefs = useRef({});
+  const simRef = useRef({});
+  const rafRef = useRef(null);
+  const mouseRef = useRef({ x: 0, y: 0, active: false });
+  const dragRef = useRef({ id: null, idea: null, startX: 0, startY: 0, moved: false });
+  const comingSoonTimeoutRef = useRef(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await window.storage.get(STORAGE_KEY, false);
+        if (res && res.value) {
+          setIdeas(JSON.parse(res.value));
+        }
+      } catch (e) {
+        // key not present yet — that's fine, start empty
+      }
+      try {
+        const resP = await window.storage.get(PROJECTS_STORAGE_KEY, false);
+        if (resP && resP.value) {
+          setProjects(JSON.parse(resP.value));
+        }
+      } catch (e) {
+        // noch keine Projekte vorhanden
+      } finally {
+        setLoaded(true);
+      }
+    })();
+  }, []);
+
+  async function persist(next) {
+    setIdeas(next);
+    try {
+      const res = await window.storage.set(STORAGE_KEY, JSON.stringify(next), false);
+      if (!res) setError("Speichern hat nicht geklappt. Änderung bleibt nur lokal.");
+      else setError(null);
+    } catch (e) {
+      setError("Speichern hat nicht geklappt. Änderung bleibt nur lokal.");
+    }
+  }
+
+  async function persistProjects(next) {
+    setProjects(next);
+    try {
+      const res = await window.storage.set(PROJECTS_STORAGE_KEY, JSON.stringify(next), false);
+      if (!res) setError("Speichern hat nicht geklappt. Änderung bleibt nur lokal.");
+      else setError(null);
+    } catch (e) {
+      setError("Speichern hat nicht geklappt. Änderung bleibt nur lokal.");
+    }
+  }
+
+  function removeProject(id) {
+    persistProjects(projects.filter((p) => p.id !== id));
+  }
+
+  // Prüft bei jeder Datenänderung, wer aktuell Topscorer ist, merkt sich seit wann,
+  // und befördert eine Idee automatisch zum Projekt, sobald sie 4 Wochen durchgehend
+  // die höchste Bewertung aller Ideen hatte.
+  useEffect(() => {
+    if (!loaded || ideas.length === 0) return;
+
+    let topIdea = null;
+    let topScore = -Infinity;
+    ideas.forEach((idea) => {
+      const s = computeScore(idea);
+      if (s > topScore) {
+        topScore = s;
+        topIdea = idea;
+      }
+    });
+    if (!topIdea) return;
+
+    const now = Date.now();
+    let changed = false;
+    const nextIdeas = ideas.map((idea) => {
+      if (idea.id === topIdea.id) {
+        if (!idea.topScorerSince) {
+          changed = true;
+          return { ...idea, topScorerSince: now };
+        }
+        return idea;
+      }
+      if (idea.topScorerSince) {
+        changed = true;
+        return { ...idea, topScorerSince: null };
+      }
+      return idea;
+    });
+
+    const currentTop = nextIdeas.find((i) => i.id === topIdea.id);
+    if (currentTop.topScorerSince && now - currentTop.topScorerSince >= TOP_SCORER_PROJECT_MS) {
+      const { topScorerSince, ...rest } = currentTop;
+      const promoted = { ...rest, promotedAt: now, promotedScore: topScore };
+      const remainingIdeas = nextIdeas.filter((i) => i.id !== topIdea.id);
+      persist(remainingIdeas);
+      persistProjects([...projects, promoted]);
+      return;
+    }
+
+    if (changed) {
+      persist(nextIdeas);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ideas, loaded]);
+
+  function openNewForm() {
+    setDraft(emptyDraft());
+    setEditId(null);
+    setShowForm(true);
+    setModalEvalExpanded(true);
+    setMilestoneText("");
+    setMilestoneDate(new Date().toISOString().slice(0, 10));
+    setTimeout(() => titleRef.current && titleRef.current.focus(), 50);
+  }
+
+  function openEditForm(idea, collapseEval) {
+    setDraft({ ...emptyDraft(), ...idea, milestones: idea.milestones || [] });
+    setEditId(idea.id);
+    setShowForm(true);
+    setModalEvalExpanded(!collapseEval);
+    setMilestoneText("");
+    setMilestoneDate(new Date().toISOString().slice(0, 10));
+  }
+
+  function addMilestone() {
+    if (!milestoneText.trim()) return;
+    const m = { id: uid(), text: milestoneText.trim(), date: milestoneDate || new Date().toISOString().slice(0, 10) };
+    setDraft((prev) => ({ ...prev, milestones: [...(prev.milestones || []), m] }));
+    setMilestoneText("");
+  }
+
+  function removeMilestone(id) {
+    setDraft((prev) => ({ ...prev, milestones: (prev.milestones || []).filter((m) => m.id !== id) }));
+  }
+
+  function formatMilestoneDate(dateStr) {
+    if (!dateStr) return "";
+    const d = new Date(`${dateStr}T00:00:00`);
+    if (isNaN(d.getTime())) return dateStr;
+    return d.toLocaleDateString("de-DE");
+  }
+
+  function saveDraft() {
+    if (!draft.title.trim()) return;
+    let finalDraft = draft;
+    if (milestoneText.trim()) {
+      const m = { id: uid(), text: milestoneText.trim(), date: milestoneDate || new Date().toISOString().slice(0, 10) };
+      finalDraft = { ...draft, milestones: [...(draft.milestones || []), m] };
+    }
+    if (editId) {
+      const next = ideas.map((i) => (i.id === editId ? { ...finalDraft, id: editId, createdAt: i.createdAt } : i));
+      persist(next);
+    } else {
+      const next = [...ideas, { ...finalDraft, id: uid(), createdAt: Date.now() }];
+      persist(next);
+    }
+    setShowForm(false);
+    setDraft(emptyDraft());
+    setEditId(null);
+    setMilestoneText("");
+  }
+
+  function removeIdea(id) {
+    persist(ideas.filter((i) => i.id !== id));
+  }
+
+  function changeStatus(id, status) {
+    persist(ideas.map((i) => (i.id === id ? { ...i, status } : i)));
+  }
+
+  function updateIdeaPosition(id, posX, posY) {
+    persist(ideas.map((i) => (i.id === id ? { ...i, posX, posY } : i)));
+  }
+
+  function toggleFilter(key) {
+    setFilter((prev) => {
+      if (key === "alle") return new Set();
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  function showComingSoon(label) {
+    setComingSoonMsg(`${label} kommt bald 👀`);
+    clearTimeout(comingSoonTimeoutRef.current);
+    comingSoonTimeoutRef.current = setTimeout(() => setComingSoonMsg(""), 2000);
+  }
+
+  const filtered = ideas.filter((i) => filter.size === 0 || filter.has(i.status));
+  function tableSortValue(idea, col) {
+    if (col === "score") return computeScore(idea);
+    if (col === "title") return idea.title.toLowerCase();
+    if (col === "status") return STATUS[idea.status].label;
+    if (col === "createdAt") return idea.createdAt;
+    return idea[col];
+  }
+
+  function toggleSortCol(col) {
+    if (sortCol === col) {
+      setSortDir(sortDir === "asc" ? "desc" : "asc");
+    } else {
+      setSortCol(col);
+      setSortDir(col === "title" || col === "status" ? "asc" : "desc");
+    }
+  }
+
+  const tableSorted = [...filtered].sort((a, b) => {
+    const va = tableSortValue(a, sortCol);
+    const vb = tableSortValue(b, sortCol);
+    let cmp;
+    if (typeof va === "string") cmp = va.localeCompare(vb);
+    else cmp = va - vb;
+    return sortDir === "asc" ? cmp : -cmp;
+  });
+
+  // Größe relativ zur aktuellen Score-Spanne berechnen, nicht am starren 0–10-Raster,
+  // damit Unterschiede zwischen den Ideen (v. a. Rang 1 vs. 2 vs. 3 ...) deutlich sichtbar sind.
+  const filteredScores = filtered.map((i) => computeScore(i));
+  const scoreMax = filteredScores.length ? Math.max(...filteredScores) : 10;
+  const scoreMin = filteredScores.length ? Math.min(...filteredScores) : 0;
+  const scoreSpan = scoreMax - scoreMin;
+
+  function scoreToT(score) {
+    if (scoreSpan < 0.05) return 0.55; // alle Ideen etwa gleich stark bewertet
+    return (score - scoreMin) / scoreSpan;
+  }
+
+  // Flächenbasierter Größenalgorithmus: verteilt einen festen Anteil der verfügbaren
+  // Stage-Fläche auf alle Bubbles, sodass sie bei jeder Fenstergröße und Anzahl
+  // rechnerisch hineinpassen, statt mit festen Pixelwerten zu überlappen.
+  function computeBubbleSizes(ideasList, bounds) {
+    const sizeMap = {};
+    const n = ideasList.length;
+    if (n === 0) return sizeMap;
+
+    const w = Math.max(bounds.width, 1);
+    const h = Math.max(bounds.height, 1);
+    const containerArea = w * h;
+    const PACKING_FACTOR = 0.42; // Anteil der Fläche, den Bubbles insgesamt einnehmen dürfen
+    const targetTotalArea = containerArea * PACKING_FACTOR;
+
+    const weights = ideasList.map((idea) => {
+      const t = Math.pow(scoreToT(computeScore(idea)), 1.3);
+      return 0.3 + 0.7 * t; // Mindestanteil, damit die kleinste Bubble nie auf 0 schrumpft
+    });
+    const totalWeight = weights.reduce((a, b) => a + b, 0) || 1;
+
+    const minAllowed = 40;
+    const maxAllowed = Math.max(minAllowed + 10, Math.min(w, h) * 0.85);
+
+    ideasList.forEach((idea, i) => {
+      const share = weights[i] / totalWeight;
+      const area = targetTotalArea * share;
+      let diameter = 2 * Math.sqrt(area / Math.PI);
+      diameter = Math.max(minAllowed, Math.min(maxAllowed, diameter));
+      sizeMap[idea.id] = diameter;
+    });
+    return sizeMap;
+  }
+
+  const bubbleSizeById = computeBubbleSizes(filtered, stageSize);
+
+  const bubbleKey = filtered
+    .map((i) => `${i.id}|${i.status}|${computeScore(i).toFixed(1)}`)
+    .join(",");
+
+  function getStageBounds() {
+    if (stageRef.current) {
+      const rect = stageRef.current.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) return { width: rect.width, height: rect.height };
+    }
+    return stageSize;
+  }
+
+  function clamp(v, min, max) {
+    return Math.min(max, Math.max(min, v));
+  }
+
+  function handleStageMouseMove(e) {
+    if (!stageRef.current) return;
+    const rect = stageRef.current.getBoundingClientRect();
+    mouseRef.current.x = e.clientX - rect.left;
+    mouseRef.current.y = e.clientY - rect.top;
+    mouseRef.current.active = true;
+  }
+
+  function handleStageMouseLeave() {
+    mouseRef.current.active = false;
+  }
+
+  function handlePointerMove(e) {
+    const drag = dragRef.current;
+    if (!drag.id || !stageRef.current) return;
+    const rect = stageRef.current.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    if (Math.abs(mx - drag.startX) > 4 || Math.abs(my - drag.startY) > 4) drag.moved = true;
+    const p = simRef.current[drag.id];
+    if (p) {
+      p.vx = mx - p.x;
+      p.vy = my - p.y;
+      p.x = clamp(mx, p.r, rect.width - p.r);
+      p.y = clamp(my, p.r, rect.height - p.r);
+    }
+    mouseRef.current.x = mx;
+    mouseRef.current.y = my;
+    mouseRef.current.active = true;
+  }
+
+  function handlePointerUp() {
+    const drag = dragRef.current;
+    window.removeEventListener("pointermove", handlePointerMove);
+    window.removeEventListener("pointerup", handlePointerUp);
+    const p = drag.id ? simRef.current[drag.id] : null;
+    if (p) {
+      p.dragging = false;
+      const speed = Math.hypot(p.vx, p.vy);
+      const maxFling = 3.2;
+      if (speed > maxFling) { p.vx = (p.vx / speed) * maxFling; p.vy = (p.vy / speed) * maxFling; }
+      if (drag.moved) {
+        const bounds = getStageBounds();
+        const posX = bounds.width > 0 ? p.x / bounds.width : 0.5;
+        const posY = bounds.height > 0 ? p.y / bounds.height : 0.5;
+        updateIdeaPosition(drag.id, posX, posY);
+      }
+    }
+    if (drag.id && !drag.moved && drag.idea) {
+      openEditForm(drag.idea, true);
+    }
+    dragRef.current = { id: null, idea: null, startX: 0, startY: 0, moved: false };
+  }
+
+  function handleBubblePointerDown(e, idea) {
+    e.preventDefault();
+    if (!stageRef.current) return;
+    const rect = stageRef.current.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    dragRef.current = { id: idea.id, idea, startX: mx, startY: my, moved: false };
+    const p = simRef.current[idea.id];
+    if (p) { p.dragging = true; p.vx = 0; p.vy = 0; }
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
+  }
+
+  // Sync simulation entries with the current filtered idea list (add/remove/resize)
+  useEffect(() => {
+    if (viewMode !== "bubbles") return;
+    const bounds = getStageBounds();
+    const currentIds = new Set(filtered.map((i) => i.id));
+    Object.keys(simRef.current).forEach((id) => {
+      if (!currentIds.has(id)) delete simRef.current[id];
+    });
+    filtered.forEach((idea) => {
+      const r = (bubbleSizeById[idea.id] || 90) / 2;
+      const existing = simRef.current[idea.id];
+      if (existing) {
+        existing.r = r;
+      } else {
+        let x, y;
+        if (typeof idea.posX === "number" && typeof idea.posY === "number") {
+          x = clamp(idea.posX * bounds.width, r, Math.max(bounds.width - r, r));
+          y = clamp(idea.posY * bounds.height, r, Math.max(bounds.height - r, r));
+        } else {
+          x = Math.random() * Math.max(bounds.width - 2 * r, 10) + r;
+          y = Math.random() * Math.max(bounds.height - 2 * r, 10) + r;
+        }
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 0.12 + Math.random() * 0.18;
+        simRef.current[idea.id] = {
+          id: idea.id,
+          x, y, r,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+        };
+        const el = nodeRefs.current[idea.id];
+        if (el) el.style.transform = `translate(${x - r}px, ${y - r}px)`;
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bubbleKey, viewMode, stageSize]);
+
+  // Stage-Größe aktuell halten (Fenster-Resize, Bildschirmdrehung, Sidebar etc.),
+  // damit die Bubble-Größen immer zur tatsächlich verfügbaren Fläche passen.
+  // Wichtig: hängt zusätzlich davon ab, ob die Fläche gerade wirklich im DOM existiert —
+  // die entsteht erst, sobald die Ideen geladen sind (filtered.length > 0), nicht schon
+  // beim ersten Rendern mit viewMode "bubbles" allein.
+  const hasBubbleStage = viewMode === "bubbles" && filtered.length > 0;
+
+  useEffect(() => {
+    if (!hasBubbleStage || !stageRef.current) return;
+    const el = stageRef.current;
+    function updateStageSize() {
+      const rect = el.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        setStageSize({ width: rect.width, height: rect.height });
+      }
+    }
+    updateStageSize();
+    // Doppeltes rAF als Sicherheitsnetz, falls das Layout beim ersten Aufruf
+    // (z. B. wegen Web-Fonts) noch nicht ganz fertig war.
+    requestAnimationFrame(() => requestAnimationFrame(updateStageSize));
+    const ro = new ResizeObserver(updateStageSize);
+    ro.observe(el);
+    window.addEventListener("resize", updateStageSize);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", updateStageSize);
+    };
+  }, [hasBubbleStage]);
+
+  // Animation loop: gentle drifting motion with soft collisions, like a bubble tank
+  useEffect(() => {
+    if (viewMode !== "bubbles") return;
+    function tick() {
+      const bounds = getStageBounds();
+      const items = Object.values(simRef.current);
+      // Kollisionen zwischen Bubbles — eine gezogene Bubble hat "unendliche Masse"
+      // und wird selbst nicht verschoben, stößt andere aber weg.
+      for (let i = 0; i < items.length; i++) {
+        for (let j = i + 1; j < items.length; j++) {
+          const a = items[i], b = items[j];
+          const dx = b.x - a.x, dy = b.y - a.y;
+          const dist = Math.sqrt(dx * dx + dy * dy) || 0.01;
+          const minDist = a.r + b.r + 3;
+          if (dist < minDist) {
+            const overlap = minDist - dist;
+            const nx = dx / dist, ny = dy / dist;
+            if (a.dragging && !b.dragging) {
+              b.x += nx * overlap; b.y += ny * overlap;
+              b.vx += nx * 0.5; b.vy += ny * 0.5;
+            } else if (b.dragging && !a.dragging) {
+              a.x -= nx * overlap; a.y -= ny * overlap;
+              a.vx -= nx * 0.5; a.vy -= ny * 0.5;
+            } else if (!a.dragging && !b.dragging) {
+              const half = overlap / 2;
+              a.x -= nx * half; a.y -= ny * half;
+              b.x += nx * half; b.y += ny * half;
+              const relVX = b.vx - a.vx, relVY = b.vy - a.vy;
+              const dot = relVX * nx + relVY * ny;
+              if (dot < 0) {
+                const impulse = dot * 0.5;
+                a.vx += impulse * nx; a.vy += impulse * ny;
+                b.vx -= impulse * nx; b.vy -= impulse * ny;
+              }
+            }
+          }
+        }
+      }
+      // Cursor stößt Bubbles wie eine Kollision ab, sobald die Maus in die Nähe kommt.
+      if (mouseRef.current.active) {
+        const cursorR = 30;
+        items.forEach((p) => {
+          if (p.dragging) return;
+          const dx = p.x - mouseRef.current.x, dy = p.y - mouseRef.current.y;
+          const dist = Math.sqrt(dx * dx + dy * dy) || 0.01;
+          const minDist = p.r + cursorR;
+          if (dist < minDist) {
+            const overlap = minDist - dist;
+            const nx = dx / dist, ny = dy / dist;
+            p.x += nx * overlap * 0.03;
+            p.y += ny * overlap * 0.03;
+            p.vx += nx * overlap * 0.001;
+            p.vy += ny * overlap * 0.001;
+          }
+        });
+      }
+      items.forEach((p) => {
+        if (p.dragging) {
+          p.x = clamp(p.x, p.r, bounds.width - p.r);
+          p.y = clamp(p.y, p.r, bounds.height - p.r);
+        } else {
+          p.vx += (Math.random() - 0.5) * 0.018;
+          p.vy += (Math.random() - 0.5) * 0.018;
+          p.vx *= 0.99;
+          p.vy *= 0.99;
+          const speed = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
+          const maxSpeed = 0.55;
+          if (speed > maxSpeed) { p.vx = (p.vx / speed) * maxSpeed; p.vy = (p.vy / speed) * maxSpeed; }
+          p.x += p.vx;
+          p.y += p.vy;
+          if (p.x - p.r < 0) { p.x = p.r; p.vx = Math.abs(p.vx); }
+          if (p.x + p.r > bounds.width) { p.x = bounds.width - p.r; p.vx = -Math.abs(p.vx); }
+          if (p.y - p.r < 0) { p.y = p.r; p.vy = Math.abs(p.vy); }
+          if (p.y + p.r > bounds.height) { p.y = bounds.height - p.r; p.vy = -Math.abs(p.vy); }
+        }
+        const el = nodeRefs.current[p.id];
+        if (el) el.style.transform = `translate(${p.x - p.r}px, ${p.y - p.r}px)`;
+      });
+      rafRef.current = requestAnimationFrame(tick);
+    }
+    rafRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [viewMode]);
+
+
+
+  const counts = ideas.reduce((acc, i) => {
+    acc[i.status] = (acc[i.status] || 0) + 1;
+    return acc;
+  }, {});
+
+  return (
+    <div className="wrap">
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Nunito:wght@400;600;700;800&display=swap');
+
+        * { box-sizing: border-box; }
+        .wrap {
+          --ink: #2B2250;
+          --ink-dim: #8377AC;
+          --bg: #FBF3EC;
+          --surface: #FFFFFF;
+          --surface-2: #F3EEFB;
+          --amber: #FFC94A;
+          --teal: #06D6A0;
+          --rust: #FF5D8F;
+          --line: #ECE3FA;
+          --navy: #211D33;
+          --card-radius: 20px;
+          --card-shadow: 0 10px 28px rgba(43,34,80,0.10);
+          font-family: 'Nunito', -apple-system, sans-serif;
+          background: linear-gradient(135deg, #FFF3E0 0%, #FDE7EF 32%, #EEE3FB 62%, #E3F3FF 100%);
+          background-attachment: fixed;
+          color: var(--ink);
+          min-height: 100vh;
+          padding: 40px 28px 110px;
+          -webkit-font-smoothing: antialiased;
+        }
+        .header {
+          max-width: 920px;
+          margin: 0 auto 24px;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 16px;
+        }
+        .title {
+          font-family: 'Baloo 2', cursive;
+          font-size: 28px;
+          font-weight: 600;
+          line-height: 1.1;
+          margin: 0 0 6px;
+          letter-spacing: -0.01em;
+        }
+        .subtitle {
+          color: var(--ink-dim);
+          font-size: 14.5px;
+          margin: 0;
+          max-width: 46ch;
+        }
+        .add-btn-round {
+          width: 46px; height: 46px; flex-shrink: 0;
+          background: var(--navy); color: #fff; border: none; border-radius: 50%;
+          font-size: 24px; line-height: 1; cursor: pointer;
+          display: flex; align-items: center; justify-content: center;
+          box-shadow: 0 8px 18px rgba(33,29,51,0.3);
+        }
+        .add-btn-round:hover { background: #33304a; }
+        .account-chip {
+          display: inline-flex; align-items: center; gap: 6px;
+          background: none; border: none; box-shadow: none;
+          padding: 0; border-radius: 0; font-size: 11.5px; color: var(--ink-dim);
+        }
+        .signout-link {
+          background: none; border: none; color: var(--ink-dim); cursor: pointer;
+          font-size: 11px; text-decoration: underline; text-underline-offset: 2px;
+          font-family: 'Nunito', sans-serif; padding: 0;
+        }
+        .signout-link:hover { color: var(--ink); }
+
+        .toolbar {
+          max-width: 920px;
+          margin: 0 auto 24px;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          flex-wrap: wrap;
+          gap: 12px;
+          border-bottom: none;
+          padding-bottom: 0;
+        }
+        .chips {
+          display: flex; flex-wrap: nowrap; gap: 8px; overflow-x: auto;
+          scrollbar-width: none; -ms-overflow-style: none; padding-bottom: 2px;
+        }
+        .chips::-webkit-scrollbar { display: none; }
+        .chip {
+          background: var(--surface);
+          border: none;
+          box-shadow: 0 2px 8px rgba(43,34,80,0.06);
+          color: var(--ink-dim);
+          padding: 7px 14px;
+          border-radius: 999px;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+          font-family: 'Nunito', sans-serif;
+          white-space: nowrap;
+          flex-shrink: 0;
+        }
+        .chip.active {
+          color: #fff;
+          background: var(--navy);
+          box-shadow: 0 4px 12px rgba(33,29,51,0.3);
+        }
+        .sortrow { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-dim); }
+        .sortrow select {
+          background: var(--surface);
+          color: var(--ink);
+          border: none; box-shadow: var(--card-shadow);
+          border-radius: 999px;
+          padding: 6px 12px;
+          font-family: 'Nunito', sans-serif;
+          font-size: 13px;
+        }
+
+        .status-select {
+          background: transparent;
+          border: 1px solid var(--line);
+          color: var(--ink);
+          font-size: 12.5px;
+          border-radius: 3px;
+          padding: 4px 6px;
+          font-family: 'Nunito', sans-serif;
+        }
+        .link-btn {
+          background: none; border: none; padding: 0; cursor: pointer;
+          color: var(--ink-dim); font-size: 12.5px; font-family: 'Nunito', sans-serif;
+          text-decoration: underline; text-underline-offset: 2px;
+        }
+        .link-btn:hover { color: var(--ink); }
+        .eval-toggle {
+          display: flex; align-items: center; justify-content: space-between;
+          background: none; border: none; border-top: 1px solid var(--line);
+          padding: 8px 0 0; margin-top: 2px; cursor: pointer;
+          color: var(--ink-dim); font-size: 12.5px; font-family: 'Nunito', sans-serif;
+          width: 100%; text-align: left;
+        }
+        .eval-toggle:hover { color: var(--ink); }
+        .eval-toggle .chevron { font-size: 10px; opacity: 0.8; }
+
+        .empty {
+          max-width: 920px; margin: 60px auto; text-align: center; color: var(--ink-dim);
+          background: var(--surface); border-radius: var(--card-radius); box-shadow: var(--card-shadow);
+          padding: 48px 24px;
+        }
+        .empty .title2 { font-family: 'Baloo 2', cursive; font-size: 22px; color: var(--ink); margin-bottom: 8px; }
+
+        .modal-backdrop {
+          position: fixed; inset: 0; background: rgba(33,29,51,0.55);
+          display: flex; align-items: flex-start; justify-content: center;
+          padding: 60px 20px; overflow-y: auto; z-index: 50;
+        }
+        .modal {
+          background: var(--surface); border-radius: 24px; box-shadow: 0 24px 60px rgba(33,29,51,0.25);
+          padding: 28px; width: 100%; max-width: 480px;
+        }
+        .modal h2 { font-family: 'Baloo 2', cursive; font-weight: 500; font-size: 24px; margin: 0 0 18px; }
+        .field { margin-bottom: 16px; }
+        .field label { display: block; font-size: 12.5px; color: var(--ink-dim); margin-bottom: 6px; }
+        .field input[type="text"], .field textarea {
+          width: 100%; background: var(--surface-2); border: 1px solid var(--line); color: var(--ink);
+          padding: 10px 12px; border-radius: 14px; font-family: 'Nunito', sans-serif; font-size: 14px;
+          resize: vertical;
+        }
+        .slider-row { display: flex; align-items: center; gap: 12px; }
+        .slider-row input[type="range"] { flex: 1; accent-color: var(--amber); }
+        .slider-val { width: 22px; text-align: right; font-size: 13px; color: var(--ink); font-variant-numeric: tabular-nums; }
+        .momentum-indicator {
+          display: flex; align-items: flex-start; gap: 10px;
+          background: var(--surface-2); border: 1px solid var(--line); border-radius: 14px;
+          padding: 10px 12px; margin-top: 4px;
+        }
+        .momentum-flame { font-size: 20px; line-height: 1; flex-shrink: 0; }
+        .momentum-count { font-size: 13px; font-weight: 700; color: var(--ink); }
+        .momentum-bonus { font-size: 11.5px; color: var(--ink-dim); margin-top: 2px; line-height: 1.4; }
+        .momentum-indicator-ice {
+          background: rgba(58,134,255,0.10); border-color: rgba(58,134,255,0.35);
+        }
+
+        .milestone-list { list-style: none; margin: 0 0 10px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+        .milestone-item {
+          display: flex; align-items: center; gap: 10px;
+          background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px;
+          padding: 7px 10px; font-size: 13px;
+        }
+        .milestone-date {
+          color: var(--amber); font-variant-numeric: tabular-nums; font-size: 12px;
+          white-space: nowrap; flex-shrink: 0;
+        }
+        .milestone-text { flex: 1; color: var(--ink); }
+        .milestone-remove {
+          background: none; border: none; color: var(--ink-dim); cursor: pointer;
+          font-size: 16px; line-height: 1; padding: 0 2px; flex-shrink: 0;
+        }
+        .milestone-remove:hover { color: var(--rust); }
+        .milestone-add-row { display: flex; gap: 8px; flex-wrap: wrap; }
+        .milestone-add-row input[type="text"] {
+          flex: 1; min-width: 140px; background: var(--surface-2); border: 1px solid var(--line); color: var(--ink);
+          padding: 8px 10px; border-radius: 12px; font-family: 'Nunito', sans-serif; font-size: 13.5px;
+        }
+        .milestone-add-row input[type="date"] {
+          background: var(--surface-2); border: 1px solid var(--line); color: var(--ink);
+          padding: 8px 10px; border-radius: 12px; font-family: 'Nunito', sans-serif; font-size: 13px;
+          color-scheme: light;
+        }
+        .milestone-add-row .btn-secondary { padding: 8px 14px; white-space: nowrap; }
+        .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px; }
+        .btn-secondary {
+          background: none; border: 1px solid var(--line); color: var(--ink-dim);
+          padding: 10px 18px; border-radius: 999px; cursor: pointer; font-family: 'Nunito', sans-serif; font-size: 13.5px; font-weight: 700;
+        }
+        .btn-primary {
+          background: var(--navy); border: none; color: #fff; font-weight: 700;
+          padding: 10px 20px; border-radius: 999px; cursor: pointer; font-family: 'Nunito', sans-serif; font-size: 13.5px;
+        }
+        .btn-primary:hover { background: #33304a; }
+        .error-banner {
+          max-width: 920px; margin: 0 auto 20px; background: rgba(184,92,74,0.15);
+          border: 1px solid var(--rust); color: #E8B4A6; padding: 10px 14px; border-radius: 14px; font-size: 13px;
+        }
+
+        .view-toggle {
+          display: flex; background: var(--surface-2); border-radius: 999px; padding: 3px; overflow: hidden;
+        }
+        .view-toggle button {
+          background: none; color: var(--ink-dim); border: none;
+          padding: 6px 16px; font-size: 13px; font-weight: 700; font-family: 'Nunito', sans-serif; cursor: pointer;
+          border-radius: 999px;
+        }
+        .view-toggle button.active { background: var(--navy); color: #fff; }
+
+        .table-wrap {
+          max-width: 920px; margin: 0 auto; overflow-x: auto;
+          background: var(--surface); border-radius: var(--card-radius); box-shadow: var(--card-shadow);
+        }
+        table.idea-table {
+          width: 100%; border-collapse: collapse; font-size: 13.5px; min-width: 720px;
+        }
+        .idea-table thead th {
+          text-align: left; padding: 11px 14px; color: var(--ink-dim); font-weight: 500;
+          font-size: 12.5px; border-bottom: 1px solid var(--line); cursor: pointer;
+          white-space: nowrap; user-select: none;
+        }
+        .idea-table thead th:hover { color: var(--ink); }
+        .idea-table thead th .arrow { margin-left: 4px; opacity: 0.7; }
+        .idea-table tbody tr { border-bottom: 1px solid var(--line); }
+        .idea-table tbody tr:last-child { border-bottom: none; }
+        .idea-table tbody tr:hover { background: var(--surface-2); }
+        .idea-table td { padding: 11px 14px; vertical-align: middle; }
+        .idea-table td.title-cell { cursor: pointer; }
+        .idea-table td.title-cell .t { font-family: 'Baloo 2', cursive; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+        .idea-table td.title-cell .d {
+          color: var(--ink-dim); font-size: 12px; margin-top: 2px; margin-left: 32px;
+          max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .idea-table td.num { font-variant-numeric: tabular-nums; text-align: center; color: var(--ink-dim); }
+        .score-pill {
+          display: inline-block; padding: 3px 9px; border-radius: 12px; font-weight: 700;
+          font-size: 12.5px; border: 1px solid; font-variant-numeric: tabular-nums;
+        }
+        .idea-table td.actions-cell { text-align: right; white-space: nowrap; }
+
+        .status-avatar {
+          width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0;
+          display: flex; align-items: center; justify-content: center;
+          font-size: 13px; box-shadow: 0 2px 6px rgba(43,34,80,0.18);
+        }
+
+        .project-list {
+          max-width: 920px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px;
+        }
+        .project-card {
+          background: var(--surface); border-radius: var(--card-radius); box-shadow: var(--card-shadow);
+          padding: 18px 20px;
+        }
+        .project-card-top { display: flex; align-items: center; gap: 10px; }
+        .project-card-title {
+          font-family: 'Baloo 2', cursive; font-size: 17px; font-weight: 600; color: var(--ink); flex: 1;
+        }
+        .project-card-desc { color: var(--ink-dim); font-size: 13.5px; line-height: 1.5; margin: 8px 0 0 36px; }
+        .project-card-meta {
+          display: flex; gap: 16px; flex-wrap: wrap; margin: 12px 0 0 36px;
+          font-size: 12.5px; color: var(--ink-dim);
+        }
+        .project-badge {
+          background: rgba(255,201,74,0.2); color: #8A5A00; font-weight: 700;
+          padding: 3px 10px; border-radius: 999px;
+        }
+
+        .bubble-stage {
+          max-width: 920px; margin: 0 auto; position: relative;
+          width: 100%; height: 560px; overflow: hidden;
+          border-radius: 0; box-shadow: none;
+          background: var(--surface);
+        }
+        .bubble-float {
+          position: absolute; top: 0; left: 0; border-radius: 50%;
+          display: flex; flex-direction: column; align-items: center; justify-content: center;
+          text-align: center; cursor: grab; padding: 8px;
+          will-change: transform;
+          transition: filter 0.15s ease, box-shadow 0.15s ease, width 0.4s ease, height 0.4s ease;
+          user-select: none; touch-action: none;
+        }
+        .bubble-float:active { cursor: grabbing; }
+        .bubble-float:hover { filter: brightness(1.18); z-index: 5; }
+        .bubble-delete {
+          position: absolute; top: 6px; right: 6px; width: 20px; height: 20px;
+          border-radius: 50%; border: none; background: rgba(0,0,0,0.4); color: #fff;
+          font-size: 14px; line-height: 1; cursor: pointer; padding: 0;
+          display: flex; align-items: center; justify-content: center;
+          opacity: 0; transition: opacity 0.15s ease, background 0.15s ease;
+        }
+        .bubble-float:hover .bubble-delete { opacity: 1; }
+        .bubble-delete:hover { background: var(--rust); }
+
+        .bubble-momentum {
+          position: absolute; bottom: 6px; left: 6px;
+          background: rgba(255,255,255,0.85); border-radius: 12px;
+          padding: 2px 7px; font-size: 11px; font-weight: 700;
+          display: flex; align-items: center; gap: 2px;
+          box-shadow: 0 1px 3px rgba(43,34,80,0.25);
+          pointer-events: none;
+        }
+        .bubble-ice { background: rgba(210,230,255,0.9); color: #2B4C7E; }
+
+        .bubble-stale::after {
+          content: "";
+          position: absolute; inset: 0; border-radius: 50%;
+          pointer-events: none;
+          animation: stale-pulse 2.4s ease-in-out infinite;
+        }
+        @keyframes stale-pulse {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(255, 93, 143, 0.5); }
+          50% { box-shadow: 0 0 0 10px rgba(255, 93, 143, 0); }
+        }
+        .bubble-float .b-title {
+          font-family: 'Baloo 2', cursive; font-weight: 600; line-height: 1.15;
+          overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical;
+          -webkit-line-clamp: 3;
+        }
+        .bubble-float .b-score {
+          font-size: 12px; margin-top: 4px; font-variant-numeric: tabular-nums;
+          opacity: 0.85;
+        }
+        .bubble-legend {
+          max-width: 920px; margin: 0 auto 4px; display: flex; gap: 18px; flex-wrap: wrap;
+          font-size: 12.5px; color: var(--ink-dim); justify-content: center;
+        }
+        .bubble-legend span { display: flex; align-items: center; gap: 6px; }
+        .bubble-legend .dot { width: 8px; height: 8px; border-radius: 50%; }
+
+        /* Kompaktes Layout für schmale Bildschirme (iPhone etc.) —
+           alles soll ohne Zoomen/Verschieben auf eine Seite passen. */
+        .bottom-nav {
+          position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
+          display: flex; justify-content: space-around; align-items: center;
+          background: var(--surface); box-shadow: 0 -8px 24px rgba(43,34,80,0.12);
+          border-radius: 24px 24px 0 0;
+          padding: 10px 8px calc(10px + env(safe-area-inset-bottom, 0px));
+        }
+        .nav-item {
+          background: none; border: none; cursor: pointer;
+          display: flex; flex-direction: column; align-items: center; gap: 3px;
+          padding: 6px 14px; border-radius: 14px; color: var(--ink-dim);
+          font-family: 'Nunito', sans-serif; opacity: 0.45;
+        }
+        .nav-item-active { opacity: 1; background: var(--surface-2); color: var(--ink); }
+        .nav-icon { font-size: 19px; line-height: 1; }
+        .nav-label { font-size: 10.5px; font-weight: 700; }
+
+        .coming-soon-toast {
+          position: fixed; left: 50%; bottom: 90px; transform: translateX(-50%);
+          background: var(--navy); color: #fff; padding: 9px 18px; border-radius: 999px;
+          font-family: 'Nunito', sans-serif; font-size: 13px; font-weight: 700;
+          box-shadow: 0 8px 20px rgba(33,29,51,0.35); z-index: 45;
+        }
+
+        @media (max-width: 640px) {
+          .wrap { padding: 16px 12px 100px; }
+          .header { gap: 10px; margin-bottom: 16px; align-items: flex-start; }
+          .title { font-size: 24px; margin: 0 0 2px; }
+          .subtitle { font-size: 11.5px; max-width: none; }
+          .account-chip { font-size: 10.5px; padding: 4px 8px; gap: 5px; }
+          .signout-link { font-size: 10.5px; }
+          .add-btn-round { width: 40px; height: 40px; font-size: 20px; }
+
+          .toolbar { margin-bottom: 14px; padding-bottom: 10px; gap: 8px; }
+          .chips { gap: 5px; }
+          .chip { padding: 4px 9px; font-size: 11px; }
+          .sortrow { font-size: 11px; gap: 5px; }
+          .sortrow select { padding: 3px 5px; font-size: 11px; }
+          .view-toggle button { padding: 5px 10px; font-size: 11.5px; }
+
+          .bubble-legend { gap: 8px 12px; font-size: 10.5px; margin-bottom: 8px; }
+          .bubble-legend .dot { width: 6px; height: 6px; }
+          .bubble-stage { height: min(56vh, 460px); border-radius: 0; }
+
+          .table-wrap { border-radius: 6px; }
+          .idea-table { font-size: 12px; min-width: 620px; }
+          .idea-table thead th { padding: 8px 10px; font-size: 11px; }
+          .idea-table td { padding: 8px 10px; }
+
+          .modal-backdrop { padding: 24px 12px; align-items: center; }
+          .modal { padding: 20px; max-width: 100%; }
+          .modal h2 { font-size: 20px; margin-bottom: 14px; }
+          .field { margin-bottom: 12px; }
+
+          .empty { margin: 30px auto; padding: 32px 16px; }
+          .empty .title2 { font-size: 18px; }
+        }
+      `}</style>
+
+      {activeTab === "ideen" && (
+      <>
+      <div className="header">
+        <div>
+          <h1 className="title">Meine Ideen</h1>
+          {userEmail && (
+            <div className="account-chip">
+              <span>{userEmail}</span>
+              <button className="signout-link" onClick={onSignOut}>Abmelden</button>
+            </div>
+          )}
+        </div>
+        <button className="add-btn-round" onClick={openNewForm} aria-label="Neue Idee" title="Neue Idee">+</button>
+      </div>
+
+      {error && <div className="error-banner">{error}</div>}
+
+      {loaded && ideas.length > 0 && (
+        <div className="toolbar">
+          <div className="chips">
+            <button className={`chip ${filter.size === 0 ? "active" : ""}`} onClick={() => toggleFilter("alle")}>
+              Alle ({ideas.length})
+            </button>
+            {Object.entries(STATUS).map(([key, s]) => (
+              <button
+                key={key}
+                className={`chip ${filter.has(key) ? "active" : ""}`}
+                onClick={() => toggleFilter(key)}
+              >
+                {s.label} ({counts[key] || 0})
+              </button>
+            ))}
+          </div>
+          <div className="sortrow" style={{ gap: "16px" }}>
+            <div className="view-toggle">
+              <button className={viewMode === "tabelle" ? "active" : ""} onClick={() => setViewMode("tabelle")}>Tabelle</button>
+              <button className={viewMode === "bubbles" ? "active" : ""} onClick={() => setViewMode("bubbles")}>Bubbles</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {loaded && ideas.length === 0 && (
+        <div className="empty">
+          <div className="title2">Noch keine Ideen gesammelt</div>
+          <p>Trag deine erste Geschäftsidee ein und gib ihr eine erste Einschätzung.</p>
+        </div>
+      )}
+
+      {loaded && ideas.length > 0 && filtered.length === 0 && (
+        <div className="empty">
+          <div className="title2">Keine Ideen in diesem Status</div>
+          <p>Wähle einen anderen Filter oder lege eine neue Idee an.</p>
+        </div>
+      )}
+
+
+      {viewMode === "bubbles" && filtered.length > 0 && (
+        <>
+          <div className="bubble-legend">
+            {Object.entries(STATUS).map(([key, s]) => (
+              <span key={key}><span className="dot" style={{ background: s.color }}></span>{s.label}</span>
+            ))}
+          </div>
+          <div
+            className="bubble-stage"
+            ref={stageRef}
+            onMouseMove={handleStageMouseMove}
+            onMouseLeave={handleStageMouseLeave}
+          >
+            {filtered.map((idea) => {
+              const score = computeScore(idea);
+              const st = STATUS[idea.status];
+              const size = bubbleSizeById[idea.id] || 90;
+              const fontSize = 11 + scoreToT(score) * 6.5;
+              const stale = isStale(idea);
+              return (
+                <div
+                  key={idea.id}
+                  ref={(el) => { nodeRefs.current[idea.id] = el; }}
+                  className={`bubble-float${stale ? " bubble-stale" : ""}`}
+                  onPointerDown={(e) => handleBubblePointerDown(e, idea)}
+                  style={{
+                    width: size,
+                    height: size,
+                    color: st.text,
+                    border: "none",
+                    backgroundImage: `radial-gradient(circle at 32% 24%, ${shade(st.color, 0.5)} 0%, ${st.color} 55%, ${shade(st.color, -0.15)} 100%)`,
+                    boxShadow: `0 14px 26px -8px ${st.color}b3, inset 0 3px 6px rgba(255,255,255,0.4), inset 0 -8px 12px rgba(0,0,0,0.15)`,
+                  }}
+                  title={`${idea.description || idea.title}${stale ? " — seit über einer Woche kein Meilenstein" : ""}`}
+                >
+                  <div className="b-title" style={{ fontSize, textShadow: st.text === "#fff" ? "0 1px 3px rgba(0,0,0,0.3)" : "0 1px 0 rgba(255,255,255,0.5)" }}>{idea.title}</div>
+                  <div className="b-score" style={{ color: st.text, textShadow: st.text === "#fff" ? "0 1px 2px rgba(0,0,0,0.3)" : "0 1px 0 rgba(255,255,255,0.5)" }}>{score.toFixed(1)}</div>
+                  {recentMilestoneCount(idea) > 0 && (
+                    <div className="bubble-momentum" title={`${recentMilestoneCount(idea)} Meilenstein(e) in den letzten 7 Tagen`}>
+                      🔥{recentMilestoneCount(idea)}
+                    </div>
+                  )}
+                  {iceBlockCount(idea) > 0 && (
+                    <div className="bubble-momentum bubble-ice" title={`${iceBlockCount(idea)} Eisblock(-blöcke) — lange keine Aktivität`}>
+                      ❄️{iceBlockCount(idea)}
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    className="bubble-delete"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => { e.stopPropagation(); removeIdea(idea.id); }}
+                    aria-label="Idee löschen"
+                    title="Idee löschen"
+                  >
+                    ×
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      {viewMode === "tabelle" && filtered.length > 0 && (
+        <div className="table-wrap">
+          <table className="idea-table">
+            <thead>
+              <tr>
+                <th onClick={() => toggleSortCol("title")}>
+                  Idee {sortCol === "title" && <span className="arrow">{sortDir === "asc" ? "↑" : "↓"}</span>}
+                </th>
+                <th onClick={() => toggleSortCol("score")}>
+                  Score {sortCol === "score" && <span className="arrow">{sortDir === "asc" ? "↑" : "↓"}</span>}
+                </th>
+                <th onClick={() => toggleSortCol("impact")}>
+                  Potenzial {sortCol === "impact" && <span className="arrow">{sortDir === "asc" ? "↑" : "↓"}</span>}
+                </th>
+                <th onClick={() => toggleSortCol("effort")}>
+                  Aufwand {sortCol === "effort" && <span className="arrow">{sortDir === "asc" ? "↑" : "↓"}</span>}
+                </th>
+                <th onClick={() => toggleSortCol("confidence")}>
+                  Überzeugung {sortCol === "confidence" && <span className="arrow">{sortDir === "asc" ? "↑" : "↓"}</span>}
+                </th>
+                <th onClick={() => toggleSortCol("status")}>
+                  Status {sortCol === "status" && <span className="arrow">{sortDir === "asc" ? "↑" : "↓"}</span>}
+                </th>
+                <th onClick={() => toggleSortCol("createdAt")}>
+                  Angelegt {sortCol === "createdAt" && <span className="arrow">{sortDir === "asc" ? "↑" : "↓"}</span>}
+                </th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {tableSorted.map((idea) => {
+                const score = computeScore(idea);
+                const tier = scoreTier(score);
+                const st = STATUS[idea.status];
+                return (
+                  <tr key={idea.id}>
+                    <td className="title-cell" onClick={() => openEditForm(idea)}>
+                      <div className="t">
+                        <span className="status-avatar" style={{ background: `${st.color}33` }}>{st.icon}</span>
+                        {idea.title}
+                      </div>
+                      {idea.description && <div className="d">{idea.description}</div>}
+                    </td>
+                    <td className="num">
+                      <span className="score-pill" style={{ borderColor: tier, color: tier }}>{score.toFixed(1)}</span>
+                    </td>
+                    <td className="num">{idea.impact}</td>
+                    <td className="num">{idea.effort}</td>
+                    <td className="num">{idea.confidence}</td>
+                    <td>
+                      <select
+                        className="status-select"
+                        value={idea.status}
+                        onChange={(e) => changeStatus(idea.id, e.target.value)}
+                      >
+                        {Object.entries(STATUS).map(([key, s]) => (
+                          <option key={key} value={key}>{s.icon} {s.label}</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="num" style={{ textAlign: "left", color: "var(--ink-dim)" }}>
+                      {new Date(idea.createdAt).toLocaleDateString("de-DE")}
+                    </td>
+                    <td className="actions-cell">
+                      <button className="link-btn" onClick={() => removeIdea(idea.id)}>Löschen</button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      </>
+      )}
+
+      {activeTab === "projekte" && (
+        <>
+          <div className="header">
+            <div>
+              <h1 className="title">Projekte</h1>
+              <p className="subtitle">Ideen, die 4 Wochen durchgehend Topscorer waren, landen automatisch hier.</p>
+            </div>
+          </div>
+
+          {projects.length === 0 ? (
+            <div className="empty">
+              <div className="title2">Noch keine Projekte</div>
+              <p>Eine Idee wird automatisch zum Projekt befördert, sobald sie 4 Wochen durchgehend die beste Bewertung aller Ideen hatte.</p>
+            </div>
+          ) : (
+            <div className="project-list">
+              {[...projects].sort((a, b) => b.promotedAt - a.promotedAt).map((p) => {
+                const st = STATUS[p.status] || STATUS.idee;
+                return (
+                  <div className="project-card" key={p.id}>
+                    <div className="project-card-top">
+                      <span className="status-avatar" style={{ background: `${st.color}33` }}>{st.icon}</span>
+                      <div className="project-card-title">{p.title}</div>
+                      <button className="link-btn" onClick={() => removeProject(p.id)}>Löschen</button>
+                    </div>
+                    {p.description && <p className="project-card-desc">{p.description}</p>}
+                    <div className="project-card-meta">
+                      <span className="project-badge">🏆 Score {p.promotedScore != null ? p.promotedScore.toFixed(1) : "–"}</span>
+                      <span>Projekt seit {new Date(p.promotedAt).toLocaleDateString("de-DE")}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
+      )}
+
+      {showForm && (
+        <div className="modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) setShowForm(false); }}>
+          <div className="modal">
+            <h2>{editId ? "Idee bearbeiten" : "Neue Idee"}</h2>
+            <div className="field">
+              <label>Titel</label>
+              <input
+                ref={titleRef}
+                type="text"
+                value={draft.title}
+                onChange={(e) => setDraft({ ...draft, title: e.target.value })}
+                placeholder="z. B. Abo-Service für Zimmerpflanzen"
+              />
+            </div>
+            <div className="field">
+              <label>Beschreibung</label>
+              <textarea
+                rows={3}
+                value={draft.description}
+                onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+                placeholder="Worum geht's, für wen, und warum jetzt?"
+              />
+            </div>
+            <button
+              type="button"
+              className="eval-toggle"
+              style={{ marginBottom: modalEvalExpanded ? "16px" : "8px" }}
+              onClick={() => setModalEvalExpanded((v) => !v)}
+            >
+              <span>Bewertung</span>
+              <span className="chevron">{modalEvalExpanded ? "▲" : "▼"}</span>
+            </button>
+            {modalEvalExpanded && (
+              <>
+                <div className="field">
+                  <label>Potenzial ({draft.impact}/10) — wie groß wäre der Erfolg?</label>
+                  <div className="slider-row">
+                    <input type="range" min="1" max="10" value={draft.impact}
+                      onChange={(e) => setDraft({ ...draft, impact: Number(e.target.value) })} />
+                    <span className="slider-val">{draft.impact}</span>
+                  </div>
+                </div>
+                <div className="field">
+                  <label>Aufwand ({draft.effort}/10) — wie viel Arbeit steckt drin?</label>
+                  <div className="slider-row">
+                    <input type="range" min="1" max="10" value={draft.effort}
+                      onChange={(e) => setDraft({ ...draft, effort: Number(e.target.value) })} />
+                    <span className="slider-val">{draft.effort}</span>
+                  </div>
+                </div>
+                <div className="field">
+                  <label>Überzeugung ({draft.confidence}/10) — wie sicher bist du dir?</label>
+                  <div className="slider-row">
+                    <input type="range" min="1" max="10" value={draft.confidence}
+                      onChange={(e) => setDraft({ ...draft, confidence: Number(e.target.value) })} />
+                    <span className="slider-val">{draft.confidence}</span>
+                  </div>
+                </div>
+                <div className={`momentum-indicator${iceBlockCount(draft) > 0 ? " momentum-indicator-ice" : ""}`}>
+                  <span className="momentum-flame">{iceBlockCount(draft) > 0 ? "❄️" : "🔥"}</span>
+                  <div>
+                    {iceBlockCount(draft) > 0 ? (
+                      <>
+                        <div className="momentum-count">
+                          {iceBlockCount(draft)} Eisblock{iceBlockCount(draft) === 1 ? "" : "e"} — seit über {Math.floor((Date.now() - lastActivityTime(draft)) / WEEK_MS)} Wochen keine Aktivität
+                        </div>
+                        <div className="momentum-bonus">−{icePenalty(draft).toFixed(1)} Punkte automatisch — schmilzt, sobald wieder ein Meilenstein erreicht wird</div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="momentum-count">
+                          {recentMilestoneCount(draft)} aktive{recentMilestoneCount(draft) === 1 ? "r" : ""} Meilenstein{recentMilestoneCount(draft) === 1 ? "" : "e"} (letzte 7 Tage)
+                        </div>
+                        <div className="momentum-bonus">+{momentumBonus(draft).toFixed(1)} Punkte automatisch — nicht manuell verstellbar, verblasst nach einer Woche</div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+            <div className="field">
+              <label>Meilensteine</label>
+              {draft.milestones && draft.milestones.length > 0 && (
+                <ul className="milestone-list">
+                  {[...draft.milestones]
+                    .sort((a, b) => new Date(a.date) - new Date(b.date))
+                    .map((m) => (
+                      <li className="milestone-item" key={m.id}>
+                        <span className="milestone-date">{formatMilestoneDate(m.date)}</span>
+                        <span className="milestone-text">{m.text}</span>
+                        <button
+                          type="button"
+                          className="milestone-remove"
+                          onClick={() => removeMilestone(m.id)}
+                          aria-label="Meilenstein löschen"
+                        >
+                          ×
+                        </button>
+                      </li>
+                    ))}
+                </ul>
+              )}
+              <div className="milestone-add-row">
+                <input
+                  type="text"
+                  value={milestoneText}
+                  onChange={(e) => setMilestoneText(e.target.value)}
+                  placeholder="Erreichter Meilenstein, z. B. Erste 10 Kunden gewonnen"
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addMilestone(); } }}
+                />
+                <input
+                  type="date"
+                  value={milestoneDate}
+                  onChange={(e) => setMilestoneDate(e.target.value)}
+                />
+                <button type="button" className="btn-secondary" onClick={addMilestone}>
+                  + Hinzufügen
+                </button>
+              </div>
+            </div>
+            <div className="field">
+              <label>Status</label>
+              <select
+                className="status-select"
+                style={{ width: "100%", padding: "10px 12px" }}
+                value={draft.status}
+                onChange={(e) => setDraft({ ...draft, status: e.target.value })}
+              >
+                {Object.entries(STATUS).map(([key, s]) => (
+                  <option key={key} value={key}>{s.icon} {s.label}</option>
+                ))}
+              </select>
+            </div>
+            <div className="modal-actions">
+              <button className="btn-secondary" onClick={() => setShowForm(false)}>Abbrechen</button>
+              <button className="btn-primary" onClick={saveDraft} disabled={!draft.title.trim()}>
+                {editId ? "Speichern" : "Idee anlegen"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {comingSoonMsg && <div className="coming-soon-toast">{comingSoonMsg}</div>}
+
+      <nav className="bottom-nav">
+        <button
+          className={`nav-item ${activeTab === "ideen" ? "nav-item-active" : ""}`}
+          onClick={() => setActiveTab("ideen")}
+        >
+          <span className="nav-icon">💡</span>
+          <span className="nav-label">Ideen</span>
+        </button>
+        <button
+          className={`nav-item ${activeTab === "projekte" ? "nav-item-active" : ""}`}
+          onClick={() => setActiveTab("projekte")}
+        >
+          <span className="nav-icon">🏆</span>
+          <span className="nav-label">Projekte</span>
+        </button>
+        <button className="nav-item" onClick={() => showComingSoon("Profil")}>
+          <span className="nav-icon">👤</span>
+          <span className="nav-label">Profil</span>
+        </button>
+      </nav>
+    </div>
+  );
+}
+
+
+window.__mountBubblesApp = (userInfo) => {
+  const root = ReactDOM.createRoot(document.getElementById('root'));
+  root.render(<IdeenWerkstatt userEmail={userInfo.email} onSignOut={userInfo.onSignOut} />);
+};
+window.__bubblesReady = true;
+window.dispatchEvent(new Event('bubbles-ready'));
+</script>
+</body>
+</html>
