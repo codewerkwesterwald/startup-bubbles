@@ -440,6 +440,15 @@ function IdeenWerkstatt({ userEmail, onSignOut }) {
     persistProjects(projects.filter((p) => p.id !== id));
   }
 
+  function demoteToIdea(id) {
+    const project = projects.find((p) => p.id === id);
+    if (!project) return;
+    const { promotedAt, promotedScore, ...rest } = project;
+    const restored = { ...rest, topScorerSince: null };
+    persistProjects(projects.filter((p) => p.id !== id));
+    persist([...ideas, restored]);
+  }
+
   // Prüft bei jeder Datenänderung, wer aktuell Topscorer ist, merkt sich seit wann,
   // und befördert eine Idee automatisch zum Projekt, sobald sie 4 Wochen durchgehend
   // die höchste Bewertung aller Ideen hatte.
@@ -1547,6 +1556,7 @@ function IdeenWerkstatt({ userEmail, onSignOut }) {
                     <div className="project-card-top">
                       <span className="status-avatar" style={{ background: `${st.color}33` }}>{st.icon}</span>
                       <div className="project-card-title">{p.title}</div>
+                      <button className="link-btn" onClick={() => demoteToIdea(p.id)}>Zurück zu Ideen</button>
                       <button className="link-btn" onClick={() => removeProject(p.id)}>Löschen</button>
                     </div>
                     {p.description && <p className="project-card-desc">{p.description}</p>}
