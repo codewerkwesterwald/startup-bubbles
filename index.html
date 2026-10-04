@@ -1064,10 +1064,10 @@ function IdeenWerkstatt({ userEmail, onSignOut }) {
           if (dist < minDist) {
             const overlap = minDist - dist;
             const nx = dx / dist, ny = dy / dist;
-            p.x += nx * overlap * 0.03;
-            p.y += ny * overlap * 0.03;
-            p.vx += nx * overlap * 0.001;
-            p.vy += ny * overlap * 0.001;
+            p.x += nx * overlap * 0.015;
+            p.y += ny * overlap * 0.015;
+            p.vx += nx * overlap * 0.0005;
+            p.vy += ny * overlap * 0.0005;
           }
         });
       }
