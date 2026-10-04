@@ -127,7 +127,9 @@
 
 <script>
   // ===== APP-VERSION — bei jedem Update erhöhen =====
-  window.APP_VERSION = "1.0.0";
+  window.APP_VERSION = "1.2.0";
+  // URL des KI-Proxys (Cloudflare Worker) hier eintragen, z. B. "https://startup-bubbles-ki.DEINNAME.workers.dev"
+  window.AI_ENDPOINT = "";
   window.APP_BUILD = "04.10.2026";
   document.addEventListener("DOMContentLoaded", function () {
     var el = document.getElementById("login-version");
@@ -234,6 +236,7 @@
       email: currentUser.email,
       name: currentUser.displayName,
       photo: currentUser.photoURL,
+      getToken: () => currentUser.getIdToken(),
       onSignOut: () => signOut(auth),
     });
     appMounted = true;
@@ -406,10 +409,15 @@ function icePenalty(idea) {
   return iceBlockCount(idea) * 0.5;
 }
 
+const AI_WEIGHT = 0.2; // Anteil der KI-Analyse am Gesamt-Score
+
 function computeScore(idea) {
   const ease = 11 - idea.effort;
   const base = (idea.impact * 2 + idea.confidence + ease) / 4;
-  return base + momentumBonus(idea) - icePenalty(idea);
+  const adjusted = base + momentumBonus(idea) - icePenalty(idea);
+  const ai = idea.analysis && typeof idea.analysis.score === "number" ? idea.analysis.score : null;
+  // Ohne Analyse bleibt der Score unverändert; mit Analyse: 80 % bisheriger Score + 20 % KI-Score
+  return ai == null ? adjusted : adjusted * (1 - AI_WEIGHT) + ai * AI_WEIGHT;
 }
 
 function scoreTier(score) {
@@ -439,7 +447,133 @@ const emptyDraft = () => ({
   milestones: [],
 });
 
-function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut }) {
+// ===== KI-Analyse =====
+const AI_SYSTEM = "Du bist ein erfahrener, nüchterner Startup-Analyst. Du bewertest Geschäftsideen ehrlich und realistisch, ohne zu schmeicheln. Antworte ausschließlich mit gültigem JSON, ohne Erklärtext und ohne Markdown.";
+
+function goalLabel(key, value) {
+  const q = GOAL_QUESTIONS.find((x) => x.key === key);
+  const o = q && q.options.find((x) => x.value === value);
+  return o ? o.label : null;
+}
+
+function goalsToText(g) {
+  const none = "nicht angegeben";
+  if (!g) return "- (keine Ziele hinterlegt)";
+  const inds = (g.industries || []).map((v) => goalLabel("industries", v)).filter(Boolean);
+  return [
+    "- Art der Geschäftsidee: " + (goalLabel("ideaType", g.ideaType) || none),
+    "- Angestrebter monatlicher Verdienst: " + (goalLabel("monthlyIncome", g.monthlyIncome) || none),
+    "- Bevorzugte Branchen: " + (inds.length ? inds.join(", ") : none),
+    "- Zeitrahmen: " + (goalLabel("timeframe", g.timeframe) || none),
+  ].join("\n");
+}
+
+// Schlüssel aus allem, was die Analyse beeinflusst — ändert er sich, ist die Analyse veraltet
+function analysisInputKey(idea, g) {
+  return [
+    idea.title, idea.description, idea.impact, idea.effort, idea.confidence,
+    (idea.milestones || []).length,
+    g ? JSON.stringify([g.ideaType, g.monthlyIncome, g.industries, g.timeframe]) : "",
+  ].join("|");
+}
+
+function needsAnalysis(idea, g) {
+  return !idea.analysis || idea.analysis.inputKey !== analysisInputKey(idea, g);
+}
+
+function buildAnalysisPrompt(idea, g) {
+  const ms = (idea.milestones || [])
+    .slice()
+    .sort((a, b) => new Date(a.date) - new Date(b.date))
+    .map((m) => "- " + m.date + ": " + m.text)
+    .join("\n") || "keine";
+  const st = STATUS[idea.status] ? STATUS[idea.status].label : idea.status;
+  return [
+    "Analysiere diese Geschäftsidee im Verhältnis zu den persönlichen Zielen.",
+    "",
+    "ZIELE:",
+    goalsToText(g),
+    "",
+    "IDEE:",
+    "Titel: " + idea.title,
+    "Beschreibung: " + (idea.description || "(keine)"),
+    "Status: " + st,
+    "Eigene Einschätzung (1-10): Potenzial " + idea.impact + ", Aufwand " + idea.effort + " (hoch = schlecht), Überzeugung " + idea.confidence,
+    "Bisherige Meilensteine:",
+    ms,
+    "",
+    "Bewerte kritisch und realistisch. Nutze die ganze Skala von 0 bis 10 (5 = durchschnittlich, 8 oder mehr nur für außergewöhnlich passende Ideen). Berücksichtige die Passung zu den Zielen (Verdienst, Zeitrahmen, Branche, nebenher vs. Hauptgewerbe), Marktpotenzial, Umsetzbarkeit und Risiken. Ist die Beschreibung dünn, bewerte vorsichtig und sage, was fehlt.",
+    "",
+    "Antworte nur mit JSON in genau diesem Format:",
+    '{"score": <Zahl 0-10 mit einer Nachkommastelle>, "summary": "<2-3 Sätze>", "goalFit": "<1-2 Sätze zur Passung zu den Zielen>", "strengths": ["<max. 3 Punkte>"], "risks": ["<max. 3 Punkte>"], "nextStep": "<ein konkreter nächster Schritt>"}',
+  ].join("\n");
+}
+
+function parseAnalysis(raw) {
+  const t = String(raw || "").trim();
+  const a = t.indexOf("{");
+  const b = t.lastIndexOf("}");
+  if (a === -1 || b <= a) throw { code: "parse" };
+  let obj;
+  try { obj = JSON.parse(t.slice(a, b + 1)); } catch (e) { throw { code: "parse" }; }
+  let score = Number(obj.score);
+  if (!isFinite(score)) throw { code: "parse" };
+  score = Math.round(Math.min(10, Math.max(0, score)) * 10) / 10;
+  const list = (v) => (Array.isArray(v) ? v : []).map((x) => String(x).trim()).filter(Boolean).slice(0, 3);
+  return {
+    score,
+    summary: String(obj.summary || "").trim(),
+    goalFit: String(obj.goalFit || "").trim(),
+    strengths: list(obj.strengths),
+    risks: list(obj.risks),
+    nextStep: String(obj.nextStep || "").trim(),
+  };
+}
+
+// Fragt die KI: in der Claude-Vorschau direkt über Claude, in der echten App über den eigenen Proxy
+async function aiAsk(system, prompt, getToken) {
+  if (window.AI_MODE === "runtime") {
+    const sample = window.claude ? await window.claude.use("sample") : null;
+    if (!sample) throw { code: "unavailable" };
+    const res = await sample(system + "\n\n" + prompt, { cache: false, modelTier: "quick" });
+    return res.text;
+  }
+  if (!window.AI_ENDPOINT) throw { code: "not_configured" };
+  const token = getToken ? await getToken() : null;
+  if (!token) throw { code: "not_signed_in" };
+  let res;
+  try {
+    res = await fetch(window.AI_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+      body: JSON.stringify({ system, prompt }),
+    });
+  } catch (e) {
+    throw { code: "network" };
+  }
+  if (!res.ok) {
+    let msg = "";
+    try { msg = (await res.json()).error || ""; } catch (e) { /* ignorieren */ }
+    throw { code: "http_" + res.status, message: msg };
+  }
+  const data = await res.json();
+  return data.text;
+}
+
+function aiErrorText(e) {
+  const code = e && e.code;
+  if (code === "not_configured") return "Die KI-Analyse ist noch nicht eingerichtet (Proxy-URL fehlt).";
+  if (code === "not_granted") return "Zugriff auf die KI wurde abgelehnt.";
+  if (code === "rate_limited") return "Zu viele Anfragen — bitte kurz warten und erneut versuchen.";
+  if (code === "unavailable") return "Die KI ist in dieser Umgebung nicht verfügbar.";
+  if (code === "not_signed_in" || code === "http_401") return "Anmeldung abgelaufen — bitte neu anmelden und erneut versuchen.";
+  if (code === "http_403") return "Dein Konto ist für die KI-Analyse nicht freigeschaltet.";
+  if (code === "network") return "Keine Verbindung zum KI-Dienst — bitte später erneut versuchen.";
+  if (code === "parse") return "Die KI-Antwort konnte nicht gelesen werden — bitte erneut versuchen.";
+  return "Analyse fehlgeschlagen" + (e && e.message ? ": " + e.message : ".");
+}
+
+function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut, getToken }) {
   const [ideas, setIdeas] = useState([]);
   const [projects, setProjects] = useState([]);
   const [goals, setGoals] = useState(null);
@@ -462,6 +596,14 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut }) {
   const [comingSoonMsg, setComingSoonMsg] = useState("");
   const [activeTab, setActiveTab] = useState("ideen");
   const [photoFailed, setPhotoFailed] = useState(false);
+  const [goalsSavedFlash, setGoalsSavedFlash] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [analyzingIds, setAnalyzingIds] = useState({});
+  const [analyzeProgress, setAnalyzeProgress] = useState(null);
+  const [analysisMsg, setAnalysisMsg] = useState("");
+  const ideasRef = useRef([]);
+  ideasRef.current = ideas;
+  const aiMode = window.AI_MODE === "runtime" ? "runtime" : (window.AI_ENDPOINT ? "proxy" : "none");
   const profileName = userName || (userEmail ? userEmail.split("@")[0] : "Gast");
   const profileInitial = profileName.trim().charAt(0).toUpperCase() || "?";
   const titleRef = useRef(null);
@@ -472,6 +614,7 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut }) {
   const mouseRef = useRef({ x: 0, y: 0, active: false });
   const dragRef = useRef({ id: null, idea: null, startX: 0, startY: 0, moved: false });
   const comingSoonTimeoutRef = useRef(null);
+  const confirmDeleteTimeoutRef = useRef(null);
 
   useEffect(() => {
     (async () => {
@@ -530,10 +673,15 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut }) {
     setGoals(next);
     try {
       const res = await window.storage.set(GOALS_STORAGE_KEY, JSON.stringify(next), false);
-      if (!res) setError("Speichern hat nicht geklappt. Änderung bleibt nur lokal.");
-      else setError(null);
+      if (!res) {
+        setError("Speichern hat nicht geklappt. Änderung bleibt nur lokal.");
+        return false;
+      }
+      setError(null);
+      return true;
     } catch (e) {
       setError("Speichern hat nicht geklappt. Änderung bleibt nur lokal.");
+      return false;
     }
   }
 
@@ -563,8 +711,13 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut }) {
     setOnboardStep(0);
   }
 
-  function saveGoalsFromTab() {
-    persistGoals({ ...goalsDraft, onboarded: true });
+  async function saveGoalsFromTab() {
+    const ok = await persistGoals({ ...goalsDraft, onboarded: true });
+    showToast(ok ? "Ziele gespeichert ✓" : "Speichern fehlgeschlagen — bitte erneut versuchen");
+    if (ok) {
+      setGoalsSavedFlash(true);
+      setTimeout(() => setGoalsSavedFlash(false), 2200);
+    }
   }
 
   function removeProject(id) {
@@ -694,10 +847,11 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut }) {
         createdAt: original ? original.createdAt : p.createdAt,
         promotedAt: original ? original.promotedAt : p.promotedAt,
         promotedScore: original ? original.promotedScore : p.promotedScore,
+        analysis: original ? original.analysis : p.analysis,
       } : p));
       persistProjects(next);
     } else if (editId) {
-      const next = ideas.map((i) => (i.id === editId ? { ...finalDraft, id: editId, createdAt: i.createdAt } : i));
+      const next = ideas.map((i) => (i.id === editId ? { ...finalDraft, id: editId, createdAt: i.createdAt, analysis: i.analysis } : i));
       persist(next);
     } else {
       const next = [...ideas, { ...finalDraft, id: uid(), createdAt: Date.now() }];
@@ -710,6 +864,90 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut }) {
     setMilestoneText("");
   }
 
+  async function saveAnalysis(id, analysis) {
+    const next = ideasRef.current.map((i) => (i.id === id ? { ...i, analysis } : i));
+    ideasRef.current = next;
+    await persist(next);
+  }
+
+  async function runAnalysisFor(idea) {
+    const raw = await aiAsk(AI_SYSTEM, buildAnalysisPrompt(idea, goals), getToken);
+    const parsed = parseAnalysis(raw);
+    return { ...parsed, createdAt: Date.now(), inputKey: analysisInputKey(idea, goals) };
+  }
+
+  function clearAnalyzing(id) {
+    setAnalyzingIds((p) => {
+      const n = { ...p };
+      delete n[id];
+      return n;
+    });
+  }
+
+  async function analyzeIdea(id) {
+    const idea = ideasRef.current.find((i) => i.id === id);
+    if (!idea || analyzingIds[id] || analyzeProgress) return;
+    setAnalysisMsg("");
+    setAnalyzingIds((p) => ({ ...p, [id]: true }));
+    try {
+      await saveAnalysis(id, await runAnalysisFor(idea));
+    } catch (e) {
+      setAnalysisMsg(aiErrorText(e));
+    } finally {
+      clearAnalyzing(id);
+    }
+  }
+
+  async function analyzeAll() {
+    const open = ideasRef.current.filter((i) => needsAnalysis(i, goals));
+    if (open.length === 0 || analyzeProgress) return;
+    setAnalysisMsg("");
+    setAnalyzeProgress({ done: 0, total: open.length });
+    let done = 0;
+    for (const idea of open) {
+      setAnalyzingIds((p) => ({ ...p, [idea.id]: true }));
+      try {
+        const fresh = ideasRef.current.find((i) => i.id === idea.id) || idea;
+        await saveAnalysis(idea.id, await runAnalysisFor(fresh));
+      } catch (e) {
+        setAnalysisMsg(aiErrorText(e));
+        clearAnalyzing(idea.id);
+        break; // bei einem Fehler nicht weiter anfragen
+      }
+      clearAnalyzing(idea.id);
+      done += 1;
+      setAnalyzeProgress({ done, total: open.length });
+    }
+    setAnalyzeProgress(null);
+  }
+
+  function deleteFromModal() {
+    if (!editId) return;
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      clearTimeout(confirmDeleteTimeoutRef.current);
+      confirmDeleteTimeoutRef.current = setTimeout(() => setConfirmDelete(false), 3500);
+      return;
+    }
+    clearTimeout(confirmDeleteTimeoutRef.current);
+    if (editTarget === "project") {
+      persistProjects(projects.filter((p) => p.id !== editId));
+    } else {
+      persist(ideas.filter((i) => i.id !== editId));
+    }
+    setShowForm(false);
+    setDraft(emptyDraft());
+    setEditId(null);
+    setEditTarget("idea");
+    setMilestoneText("");
+    setConfirmDelete(false);
+  }
+
+  // Beim Öffnen/Schließen des Fensters die Lösch-Bestätigung zurücksetzen
+  useEffect(() => {
+    setConfirmDelete(false);
+  }, [showForm]);
+
   function demoteToIdeaFromModal() {
     if (!editId) return;
     let finalDraft = draft;
@@ -718,7 +956,7 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut }) {
       finalDraft = { ...draft, milestones: [...(draft.milestones || []), m] };
     }
     const original = projects.find((p) => p.id === editId);
-    const merged = { ...finalDraft, id: editId, createdAt: original ? original.createdAt : Date.now(), topScorerSince: null };
+    const merged = { ...finalDraft, id: editId, createdAt: original ? original.createdAt : Date.now(), topScorerSince: null, analysis: original ? original.analysis : finalDraft.analysis };
     delete merged.promotedAt;
     delete merged.promotedScore;
     persistProjects(projects.filter((p) => p.id !== editId));
@@ -738,7 +976,7 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut }) {
       finalDraft = { ...draft, milestones: [...(draft.milestones || []), m] };
     }
     const original = ideas.find((i) => i.id === editId);
-    const merged = { ...finalDraft, id: editId, createdAt: original ? original.createdAt : Date.now() };
+    const merged = { ...finalDraft, id: editId, createdAt: original ? original.createdAt : Date.now(), analysis: original ? original.analysis : finalDraft.analysis };
     delete merged.topScorerSince;
     const score = computeScore(merged);
     const promoted = { ...merged, promotedAt: Date.now(), promotedScore: score };
@@ -771,6 +1009,12 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut }) {
       else next.add(key);
       return next;
     });
+  }
+
+  function showToast(message) {
+    setComingSoonMsg(message);
+    clearTimeout(comingSoonTimeoutRef.current);
+    comingSoonTimeoutRef.current = setTimeout(() => setComingSoonMsg(""), 2200);
   }
 
   function showComingSoon(label) {
@@ -1349,6 +1593,14 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut }) {
         .milestone-add-row .btn-secondary { padding: 8px 14px; white-space: nowrap; }
         .modal-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 22px; gap: 10px; flex-wrap: wrap; }
         .modal-actions-right { display: flex; gap: 10px; }
+        .modal-actions-left { display: flex; gap: 8px; flex-wrap: wrap; }
+        .btn-danger {
+          background: rgba(255,93,143,0.12); border: none; color: #C2305F; font-weight: 700;
+          padding: 10px 16px; border-radius: 999px; cursor: pointer; font-family: 'Nunito', sans-serif; font-size: 13px;
+        }
+        .btn-danger:hover { background: rgba(255,93,143,0.22); }
+        .btn-danger-confirm { background: #FF5D8F; color: #fff; }
+        .btn-danger-confirm:hover { background: #f0487c; }
         .btn-secondary {
           background: none; border: 1px solid var(--line); color: var(--ink-dim);
           padding: 10px 18px; border-radius: 999px; cursor: pointer; font-family: 'Nunito', sans-serif; font-size: 13.5px; font-weight: 700;
@@ -1489,6 +1741,40 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut }) {
         .goals-chip-active { background: var(--navy); color: #fff; }
         .goals-save-btn { align-self: flex-start; }
 
+        .btn-primary:disabled, .btn-secondary:disabled { opacity: 0.55; cursor: default; }
+        .analysis-notice {
+          max-width: 720px; margin: 0 auto 14px; background: rgba(255,201,74,0.18); border-radius: 14px;
+          padding: 12px 14px; font-size: 13px; color: #6b4a00; line-height: 1.45;
+        }
+        .analysis-notice code { background: rgba(0,0,0,0.06); padding: 1px 5px; border-radius: 5px; font-size: 12px; }
+        .analysis-notice-soft { background: var(--surface-2); color: var(--ink-dim); }
+        .analysis-notice button {
+          background: none; border: none; color: var(--ink); font-weight: 700; text-decoration: underline;
+          cursor: pointer; font-family: inherit; font-size: inherit; padding: 0;
+        }
+        .analysis-toolbar { max-width: 720px; margin: 0 auto 14px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+        .analysis-list { max-width: 720px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+        .analysis-card { background: var(--surface); border-radius: var(--card-radius); box-shadow: var(--card-shadow); padding: 18px 20px; }
+        .analysis-card-top { display: flex; align-items: center; gap: 10px; }
+        .analysis-card-title { font-family: 'Baloo 2', cursive; font-size: 17px; font-weight: 600; color: var(--ink); flex: 1; }
+        .analysis-score {
+          font-weight: 800; font-size: 14px; padding: 3px 11px; border-radius: 999px;
+          border: 2px solid var(--line); color: var(--ink); font-variant-numeric: tabular-nums;
+        }
+        .analysis-stale {
+          display: inline-block; margin-top: 10px; font-size: 12px; font-weight: 700; color: #8A5A00;
+          background: rgba(255,201,74,0.2); padding: 5px 10px; border-radius: 10px;
+        }
+        .analysis-summary { font-size: 14px; line-height: 1.55; color: var(--ink); margin: 12px 0 0; }
+        .analysis-block { margin-top: 12px; font-size: 13.5px; line-height: 1.5; color: var(--ink-dim); }
+        .analysis-block b { display: block; color: var(--ink); font-size: 13px; margin-bottom: 3px; }
+        .analysis-block p { margin: 0; }
+        .analysis-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .analysis-cols ul { margin: 4px 0 0; padding-left: 18px; font-size: 13px; line-height: 1.5; }
+        .analysis-meta { margin-top: 12px; font-size: 11.5px; color: var(--ink-dim); }
+        .analysis-empty { margin: 10px 0 0; font-size: 13.5px; color: var(--ink-dim); }
+        .analysis-actions { margin-top: 14px; display: flex; }
+
         .profile-wrap { max-width: 520px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
         .profile-card {
           background: var(--surface); border-radius: var(--card-radius); box-shadow: var(--card-shadow);
@@ -1614,6 +1900,9 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut }) {
           .account-chip { font-size: 10.5px; padding: 4px 8px; gap: 5px; }
           .signout-link { font-size: 10.5px; }
           .add-btn-round { width: 40px; height: 40px; font-size: 20px; }
+          .nav-item { padding: 6px 9px; }
+          .nav-label { font-size: 10px; }
+          .analysis-cols { grid-template-columns: 1fr; gap: 0; }
 
           .toolbar { margin-bottom: 14px; padding-bottom: 10px; gap: 8px; }
           .chips { gap: 5px; }
@@ -1925,6 +2214,119 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut }) {
         </>
       )}
 
+      {activeTab === "analyse" && (
+        <>
+          <div className="header">
+            <div>
+              <h1 className="title">Analyse</h1>
+              <p className="subtitle">Die KI bewertet deine Ideen im Verhältnis zu deinen Zielen. Das Ergebnis fließt zu 20 % in den Score ein.</p>
+            </div>
+          </div>
+
+          {aiMode === "none" && (
+            <div className="analysis-notice">
+              ⚙️ Die KI-Analyse ist noch nicht eingerichtet: In dieser Version fehlt die Adresse des KI-Proxys (<code>AI_ENDPOINT</code>).
+            </div>
+          )}
+
+          {(!goals || (!goals.ideaType && !goals.monthlyIncome && !(goals.industries || []).length && !goals.timeframe)) && (
+            <div className="analysis-notice analysis-notice-soft">
+              🎯 Tipp: Mit hinterlegten Zielen wird die Analyse deutlich treffender.{" "}
+              <button onClick={() => setActiveTab("ziele")}>Ziele festlegen</button>
+            </div>
+          )}
+
+          {ideas.length === 0 ? (
+            <div className="empty">
+              <div className="title2">Noch keine Ideen zum Analysieren</div>
+              <p>Lege im Tab "Ideen" eine Idee an — danach kannst du sie hier von der KI bewerten lassen.</p>
+            </div>
+          ) : (
+            <>
+              <div className="analysis-toolbar">
+                <button
+                  className="btn-primary"
+                  disabled={aiMode === "none" || !!analyzeProgress || ideas.filter((i) => needsAnalysis(i, goals)).length === 0}
+                  onClick={analyzeAll}
+                >
+                  {analyzeProgress
+                    ? `Analysiere ${analyzeProgress.done + 1} von ${analyzeProgress.total} …`
+                    : `🤖 Alle offenen analysieren (${ideas.filter((i) => needsAnalysis(i, goals)).length})`}
+                </button>
+              </div>
+
+              {analysisMsg && <div className="error-banner">{analysisMsg}</div>}
+
+              <div className="analysis-list">
+                {[...ideas].sort((a, b) => computeScore(b) - computeScore(a)).map((idea) => {
+                  const a = idea.analysis;
+                  const st = STATUS[idea.status] || STATUS.idee;
+                  const busy = !!analyzingIds[idea.id];
+                  const stale = a && a.inputKey !== analysisInputKey(idea, goals);
+                  return (
+                    <div className="analysis-card" key={idea.id}>
+                      <div className="analysis-card-top">
+                        <span className="status-avatar" style={{ background: `${st.color}33` }}>{st.icon}</span>
+                        <div className="analysis-card-title">{idea.title}</div>
+                        {a && (
+                          <span className="analysis-score" style={{ borderColor: scoreTier(a.score) }}>{a.score.toFixed(1)}</span>
+                        )}
+                      </div>
+
+                      {a ? (
+                        <>
+                          {stale && <div className="analysis-stale">Seit der Analyse geändert — neu analysieren?</div>}
+                          {a.summary && <p className="analysis-summary">{a.summary}</p>}
+                          {a.goalFit && (
+                            <div className="analysis-block">
+                              <b>🎯 Passung zu deinen Zielen</b>
+                              <p>{a.goalFit}</p>
+                            </div>
+                          )}
+                          {(a.strengths.length > 0 || a.risks.length > 0) && (
+                            <div className="analysis-cols">
+                              <div className="analysis-block">
+                                <b>💪 Stärken</b>
+                                <ul>{a.strengths.map((s, i) => <li key={i}>{s}</li>)}</ul>
+                              </div>
+                              <div className="analysis-block">
+                                <b>⚠️ Risiken</b>
+                                <ul>{a.risks.map((s, i) => <li key={i}>{s}</li>)}</ul>
+                              </div>
+                            </div>
+                          )}
+                          {a.nextStep && (
+                            <div className="analysis-block">
+                              <b>➡️ Nächster Schritt</b>
+                              <p>{a.nextStep}</p>
+                            </div>
+                          )}
+                          <div className="analysis-meta">
+                            Analysiert am {new Date(a.createdAt).toLocaleDateString("de-DE")} · Anteil am Score: 20 %
+                          </div>
+                        </>
+                      ) : (
+                        <p className="analysis-empty">Noch nicht analysiert.</p>
+                      )}
+
+                      <div className="analysis-actions">
+                        <button
+                          className="btn-secondary"
+                          disabled={busy || aiMode === "none" || !!analyzeProgress}
+                          onClick={() => analyzeIdea(idea.id)}
+                        >
+                          {busy ? "⏳ Analysiere …" : a ? "Neu analysieren" : "🤖 Analysieren"}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </>
+      )}
+
       {activeTab === "ziele" && (
         <>
           <div className="header">
@@ -1956,7 +2358,7 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut }) {
                 </div>
               </div>
             ))}
-            <button className="btn-primary goals-save-btn" onClick={saveGoalsFromTab}>Ziele speichern</button>
+            <button className="btn-primary goals-save-btn" onClick={saveGoalsFromTab}>{goalsSavedFlash ? "✓ Gespeichert" : "Ziele speichern"}</button>
           </div>
         </>
       )}
@@ -2075,6 +2477,15 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut }) {
                     <span className="slider-val">{draft.confidence}</span>
                   </div>
                 </div>
+                {draft.analysis && typeof draft.analysis.score === "number" && (
+                  <div className="momentum-indicator">
+                    <span className="momentum-flame">🤖</span>
+                    <div>
+                      <div className="momentum-count">KI-Analyse: {draft.analysis.score.toFixed(1)} / 10</div>
+                      <div className="momentum-bonus">Fließt mit 20 % in den Score ein — nicht manuell verstellbar. Details im Tab "Analyse".</div>
+                    </div>
+                  </div>
+                )}
                 <div className={`momentum-indicator${iceBlockCount(draft) > 0 ? " momentum-indicator-ice" : ""}`}>
                   <span className="momentum-flame">{iceBlockCount(draft) > 0 ? "❄️" : "🔥"}</span>
                   <div>
@@ -2151,7 +2562,7 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut }) {
               </select>
             </div>
             <div className="modal-actions">
-              <div>
+              <div className="modal-actions-left">
                 {editTarget === "idea" && editId && (
                   <button className="btn-project" onClick={promoteToProjectManually} title="Diese Idee direkt als Projekt markieren">
                     🏆 Zum Projekt machen
@@ -2160,6 +2571,15 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut }) {
                 {editTarget === "project" && (
                   <button className="btn-project" onClick={demoteToIdeaFromModal} title="Dieses Projekt zurück zu den Ideen verschieben">
                     ↩️ Zurück zu Ideen
+                  </button>
+                )}
+                {editId && (
+                  <button
+                    className={`btn-danger ${confirmDelete ? "btn-danger-confirm" : ""}`}
+                    onClick={deleteFromModal}
+                    title={editTarget === "project" ? "Dieses Projekt löschen" : "Diese Idee löschen"}
+                  >
+                    {confirmDelete ? "Wirklich löschen?" : "🗑️ Löschen"}
                   </button>
                 )}
               </div>
@@ -2192,6 +2612,13 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut }) {
           <span className="nav-label">Projekte</span>
         </button>
         <button
+          className={`nav-item ${activeTab === "analyse" ? "nav-item-active" : ""}`}
+          onClick={() => setActiveTab("analyse")}
+        >
+          <span className="nav-icon">🤖</span>
+          <span className="nav-label">Analyse</span>
+        </button>
+        <button
           className={`nav-item ${activeTab === "ziele" ? "nav-item-active" : ""}`}
           onClick={() => setActiveTab("ziele")}
         >
@@ -2215,7 +2642,7 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut }) {
 
 window.__mountBubblesApp = (userInfo) => {
   const root = ReactDOM.createRoot(document.getElementById('root'));
-  root.render(<IdeenWerkstatt userEmail={userInfo.email} userName={userInfo.name} userPhoto={userInfo.photo} onSignOut={userInfo.onSignOut} />);
+  root.render(<IdeenWerkstatt userEmail={userInfo.email} userName={userInfo.name} userPhoto={userInfo.photo} onSignOut={userInfo.onSignOut} getToken={userInfo.getToken} />);
 };
 window.__bubblesReady = true;
 window.dispatchEvent(new Event('bubbles-ready'));
