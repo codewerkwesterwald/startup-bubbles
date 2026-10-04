@@ -355,6 +355,9 @@ function emptyGoals() {
 const TOP_SCORER_PROJECT_MS = 28 * 24 * 60 * 60 * 1000; // 4 Wochen durchgehend Topscorer
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+const DRAG_FOLLOW = 0.1;     // Wie stark die gehaltene Bubble pro Frame zum Finger aufholt (kleiner = träger)
+const DRAG_MAX_SPEED = 3.5;  // Maximale Geschwindigkeit der gehaltenen Bubble in px pro Frame
+const DRAG_PUSH = 0.5; // Schubkraft einer berührten/gezogenen Bubble auf andere (1 = starr)
 
 function lastActivityTime(idea) {
   const timestamps = (idea.milestones || [])
@@ -851,6 +854,10 @@ function IdeenWerkstatt({ userEmail, onSignOut }) {
   }
 
   function handleStageMouseMove(e) {
+    if (e.pointerType && e.pointerType !== "mouse") {
+      mouseRef.current.active = false;
+      return;
+    }
     if (!stageRef.current) return;
     const rect = stageRef.current.getBoundingClientRect();
     mouseRef.current.x = e.clientX - rect.left;
@@ -871,17 +878,18 @@ function IdeenWerkstatt({ userEmail, onSignOut }) {
     if (Math.abs(mx - drag.startX) > 4 || Math.abs(my - drag.startY) > 4) drag.moved = true;
     const p = simRef.current[drag.id];
     if (p) {
-      p.vx = mx - p.x;
-      p.vy = my - p.y;
-      p.x = clamp(mx, p.r, rect.width - p.r);
-      p.y = clamp(my, p.r, rect.height - p.r);
+      p.tx = clamp(mx, p.r, rect.width - p.r);
+      p.ty = clamp(my, p.r, rect.height - p.r);
     }
-    mouseRef.current.x = mx;
-    mouseRef.current.y = my;
-    mouseRef.current.active = true;
+    if (e.pointerType === "mouse") {
+      mouseRef.current.x = mx;
+      mouseRef.current.y = my;
+      mouseRef.current.active = true;
+    }
   }
 
-  function handlePointerUp() {
+  function handlePointerUp(e) {
+    if (e && e.pointerType && e.pointerType !== "mouse") mouseRef.current.active = false;
     const drag = dragRef.current;
     window.removeEventListener("pointermove", handlePointerMove);
     window.removeEventListener("pointerup", handlePointerUp);
@@ -912,7 +920,7 @@ function IdeenWerkstatt({ userEmail, onSignOut }) {
     const my = e.clientY - rect.top;
     dragRef.current = { id: idea.id, idea, startX: mx, startY: my, moved: false };
     const p = simRef.current[idea.id];
-    if (p) { p.dragging = true; p.vx = 0; p.vy = 0; }
+    if (p) { p.dragging = true; p.vx = 0; p.vy = 0; p.tx = p.x; p.ty = p.y; }
     window.addEventListener("pointermove", handlePointerMove);
     window.addEventListener("pointerup", handlePointerUp);
   }
@@ -1033,11 +1041,11 @@ function IdeenWerkstatt({ userEmail, onSignOut }) {
             const overlap = minDist - dist;
             const nx = dx / dist, ny = dy / dist;
             if (a.dragging && !b.dragging) {
-              b.x += nx * overlap; b.y += ny * overlap;
-              b.vx += nx * 0.5; b.vy += ny * 0.5;
+              b.x += nx * overlap * DRAG_PUSH; b.y += ny * overlap * DRAG_PUSH;
+              b.vx += nx * 0.5 * DRAG_PUSH; b.vy += ny * 0.5 * DRAG_PUSH;
             } else if (b.dragging && !a.dragging) {
-              a.x -= nx * overlap; a.y -= ny * overlap;
-              a.vx -= nx * 0.5; a.vy -= ny * 0.5;
+              a.x -= nx * overlap * DRAG_PUSH; a.y -= ny * overlap * DRAG_PUSH;
+              a.vx -= nx * 0.5 * DRAG_PUSH; a.vy -= ny * 0.5 * DRAG_PUSH;
             } else if (!a.dragging && !b.dragging) {
               const half = overlap / 2;
               a.x -= nx * half; a.y -= ny * half;
@@ -1073,6 +1081,16 @@ function IdeenWerkstatt({ userEmail, onSignOut }) {
       }
       items.forEach((p) => {
         if (p.dragging) {
+          const tx = p.tx != null ? p.tx : p.x;
+          const ty = p.ty != null ? p.ty : p.y;
+          let mdx = (tx - p.x) * DRAG_FOLLOW;
+          let mdy = (ty - p.y) * DRAG_FOLLOW;
+          const msp = Math.hypot(mdx, mdy);
+          if (msp > DRAG_MAX_SPEED) { mdx = (mdx / msp) * DRAG_MAX_SPEED; mdy = (mdy / msp) * DRAG_MAX_SPEED; }
+          p.x += mdx;
+          p.y += mdy;
+          p.vx = mdx;
+          p.vy = mdy;
           p.x = clamp(p.x, p.r, bounds.width - p.r);
           p.y = clamp(p.y, p.r, bounds.height - p.r);
         } else {
@@ -1693,8 +1711,8 @@ function IdeenWerkstatt({ userEmail, onSignOut }) {
           <div
             className="bubble-stage"
             ref={stageRef}
-            onMouseMove={handleStageMouseMove}
-            onMouseLeave={handleStageMouseLeave}
+            onPointerMove={handleStageMouseMove}
+            onPointerLeave={handleStageMouseLeave}
           >
             {filtered.map((idea) => {
               const score = computeScore(idea);
