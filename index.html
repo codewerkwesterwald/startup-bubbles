@@ -84,6 +84,7 @@
     background: none; border: none; color: #211D33; font-weight: 700; cursor: pointer;
     font-family: 'Nunito', sans-serif; font-size: 13.5px; text-decoration: underline; padding: 0;
   }
+  .login-version { text-align: center; font-size: 11px; color: #9a90bd; margin: 6px 0 0; }
   .login-error { color: #FF5D8F; font-size: 12.5px; margin: 14px 0 0; min-height: 16px; text-align: center; }
 
   @media (max-width: 420px) {
@@ -119,10 +120,20 @@
     <button id="google-signin-btn">Los geht's →</button>
     <p class="login-secondary">Schon dabei? <button id="google-signin-btn-secondary">Anmelden</button></p>
     <p id="login-error" class="login-error"></p>
+    <p id="login-version" class="login-version"></p>
   </div>
 </div>
 <div id="root" style="display:none;"></div>
 
+<script>
+  // ===== APP-VERSION — bei jedem Update erhöhen =====
+  window.APP_VERSION = "1.0.0";
+  window.APP_BUILD = "04.10.2026";
+  document.addEventListener("DOMContentLoaded", function () {
+    var el = document.getElementById("login-version");
+    if (el) el.textContent = "Version " + window.APP_VERSION;
+  });
+</script>
 <script>
   // Zoomen komplett sperren (Pinch-Gesten in Safari/iOS)
   ["gesturestart", "gesturechange", "gestureend"].forEach(function (ev) {
@@ -221,6 +232,8 @@
     if (!currentUser || appMounted || typeof window.__mountBubblesApp !== "function") return;
     window.__mountBubblesApp({
       email: currentUser.email,
+      name: currentUser.displayName,
+      photo: currentUser.photoURL,
       onSignOut: () => signOut(auth),
     });
     appMounted = true;
@@ -426,7 +439,7 @@ const emptyDraft = () => ({
   milestones: [],
 });
 
-function IdeenWerkstatt({ userEmail, onSignOut }) {
+function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut }) {
   const [ideas, setIdeas] = useState([]);
   const [projects, setProjects] = useState([]);
   const [goals, setGoals] = useState(null);
@@ -448,6 +461,9 @@ function IdeenWerkstatt({ userEmail, onSignOut }) {
   const [stageSize, setStageSize] = useState({ width: 860, height: 520 });
   const [comingSoonMsg, setComingSoonMsg] = useState("");
   const [activeTab, setActiveTab] = useState("ideen");
+  const [photoFailed, setPhotoFailed] = useState(false);
+  const profileName = userName || (userEmail ? userEmail.split("@")[0] : "Gast");
+  const profileInitial = profileName.trim().charAt(0).toUpperCase() || "?";
   const titleRef = useRef(null);
   const stageRef = useRef(null);
   const nodeRefs = useRef({});
@@ -1473,6 +1489,35 @@ function IdeenWerkstatt({ userEmail, onSignOut }) {
         .goals-chip-active { background: var(--navy); color: #fff; }
         .goals-save-btn { align-self: flex-start; }
 
+        .profile-wrap { max-width: 520px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+        .profile-card {
+          background: var(--surface); border-radius: var(--card-radius); box-shadow: var(--card-shadow);
+          padding: 22px 20px; text-align: center;
+        }
+        .profile-avatar {
+          width: 76px; height: 76px; border-radius: 50%; object-fit: cover;
+          margin: 0 auto 12px; display: block; box-shadow: 0 6px 16px rgba(43,34,80,0.2);
+        }
+        .profile-avatar-initial {
+          background: linear-gradient(135deg, #9B8AE0, #3A86FF); color: #fff;
+          display: flex; align-items: center; justify-content: center;
+          font-family: 'Baloo 2', cursive; font-size: 32px; font-weight: 700;
+        }
+        .profile-name { font-family: 'Baloo 2', cursive; font-size: 20px; font-weight: 600; color: var(--ink); }
+        .profile-email { font-size: 13.5px; color: var(--ink-dim); margin-top: 2px; word-break: break-all; }
+        .profile-provider {
+          display: inline-block; margin-top: 10px; font-size: 11.5px; font-weight: 700;
+          background: var(--surface-2); color: var(--ink-dim); padding: 3px 12px; border-radius: 999px;
+        }
+        .profile-info { text-align: left; padding: 8px 20px; }
+        .profile-info-row {
+          display: flex; justify-content: space-between; align-items: center;
+          padding: 12px 0; font-size: 14px; color: var(--ink-dim); border-bottom: 1px solid var(--line);
+        }
+        .profile-info-row:last-child { border-bottom: none; }
+        .profile-info-row b { color: var(--ink); font-weight: 700; }
+        .profile-signout { align-self: center; }
+
         .bubble-stage {
           max-width: 920px; margin: 0 auto; position: relative;
           width: 100%; height: 560px; overflow: hidden;
@@ -1916,6 +1961,62 @@ function IdeenWerkstatt({ userEmail, onSignOut }) {
         </>
       )}
 
+      {activeTab === "profil" && (
+        <>
+          <div className="header">
+            <div>
+              <h1 className="title">Profil</h1>
+            </div>
+          </div>
+
+          <div className="profile-wrap">
+            <div className="profile-card">
+              {userPhoto && !photoFailed ? (
+                <img
+                  className="profile-avatar"
+                  src={userPhoto}
+                  alt=""
+                  referrerPolicy="no-referrer"
+                  onError={() => setPhotoFailed(true)}
+                />
+              ) : (
+                <div className="profile-avatar profile-avatar-initial">{profileInitial}</div>
+              )}
+              <div className="profile-name">{profileName}</div>
+              {userEmail && <div className="profile-email">{userEmail}</div>}
+              <div className="profile-provider">Angemeldet mit Google</div>
+            </div>
+
+            <div className="profile-card profile-info">
+              <div className="profile-info-row">
+                <span>💡 Ideen</span><b>{ideas.length}</b>
+              </div>
+              <div className="profile-info-row">
+                <span>🏆 Projekte</span><b>{projects.length}</b>
+              </div>
+            </div>
+
+            <div className="profile-card profile-info">
+              <div className="profile-info-row">
+                <span>App-Version</span><b>{window.APP_VERSION || "–"}</b>
+              </div>
+              <div className="profile-info-row">
+                <span>Stand</span><b>{window.APP_BUILD || "–"}</b>
+              </div>
+              {window.APP_VARIANT && (
+                <div className="profile-info-row">
+                  <span>Variante</span><b>{window.APP_VARIANT}</b>
+                </div>
+              )}
+            </div>
+
+            {onSignOut && (
+              <button className="btn-secondary profile-signout" onClick={onSignOut}>Abmelden</button>
+            )}
+          </div>
+        </>
+      )}
+
       {showForm && (
         <div className="modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) setShowForm(false); }}>
           <div className="modal">
@@ -2097,7 +2198,10 @@ function IdeenWerkstatt({ userEmail, onSignOut }) {
           <span className="nav-icon">🎯</span>
           <span className="nav-label">Ziele</span>
         </button>
-        <button className="nav-item" onClick={() => showComingSoon("Profil")}>
+        <button
+          className={`nav-item ${activeTab === "profil" ? "nav-item-active" : ""}`}
+          onClick={() => setActiveTab("profil")}
+        >
           <span className="nav-icon">👤</span>
           <span className="nav-label">Profil</span>
         </button>
@@ -2111,7 +2215,7 @@ function IdeenWerkstatt({ userEmail, onSignOut }) {
 
 window.__mountBubblesApp = (userInfo) => {
   const root = ReactDOM.createRoot(document.getElementById('root'));
-  root.render(<IdeenWerkstatt userEmail={userInfo.email} onSignOut={userInfo.onSignOut} />);
+  root.render(<IdeenWerkstatt userEmail={userInfo.email} userName={userInfo.name} userPhoto={userInfo.photo} onSignOut={userInfo.onSignOut} />);
 };
 window.__bubblesReady = true;
 window.dispatchEvent(new Event('bubbles-ready'));
