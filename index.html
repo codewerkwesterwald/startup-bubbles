@@ -127,10 +127,29 @@
 
 <script>
   // ===== APP-VERSION — bei jedem Update erhöhen =====
-  window.APP_VERSION = "1.2.0";
+  window.APP_VERSION = "1.3.1";
   // URL des KI-Proxys (Cloudflare Worker) hier eintragen, z. B. "https://startup-bubbles-ki.DEINNAME.workers.dev"
   window.AI_ENDPOINT = "";
-  window.APP_BUILD = "04.10.2026";
+  window.APP_BUILD = "05.10.2026";
+
+  // ===== Nutzungsmessung — sendet NUR nach Einwilligung =====
+  window.CONSENT_KEY = "sb_analytics_consent";
+  window.__trackQueue = [];
+  window.trackEvent = function (name, params) {
+    try {
+      if (typeof window.__trackImpl === "function") { window.__trackImpl(name, params || {}); return; }
+      // Messung wird gerade gestartet: Ereignis kurz vormerken (nur wenn zugestimmt wurde)
+      if (localStorage.getItem(window.CONSENT_KEY) === "yes") {
+        window.__trackQueue.push([name, params || {}]);
+        if (window.__trackQueue.length > 50) window.__trackQueue.shift();
+      }
+    } catch (e) {}
+  };
+  window.__flushTrackQueue = function () {
+    var q = window.__trackQueue;
+    window.__trackQueue = [];
+    q.forEach(function (e) { try { if (window.__trackImpl) window.__trackImpl(e[0], e[1]); } catch (x) {} });
+  };
   document.addEventListener("DOMContentLoaded", function () {
     var el = document.getElementById("login-version");
     if (el) el.textContent = "Version " + window.APP_VERSION;
@@ -162,12 +181,39 @@
     storageBucket: "startup-bubbles.firebasestorage.app",
     messagingSenderId: "415245240164",
     appId: "1:415245240164:web:da6aa97bbed3b6e41cdc71",
+    measurementId: "G-X3G8B7DG12",
   };
 
   const firebaseApp = initializeApp(firebaseConfig);
   const auth = getAuth(firebaseApp);
   const db = getFirestore(firebaseApp);
   const provider = new GoogleAuthProvider();
+
+  // ===== Nutzungsmessung: wird erst nach Einwilligung geladen =====
+  let analytics = null;
+  let analyticsMod = null;
+  window.__initAnalytics = async function () {
+    try {
+      analyticsMod = analyticsMod || (await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-analytics.js"));
+      if (!(await analyticsMod.isSupported())) return;
+      if (!analytics) analytics = analyticsMod.getAnalytics(firebaseApp);
+      analyticsMod.setAnalyticsCollectionEnabled(analytics, true);
+      window.__trackImpl = function (name, params) { analyticsMod.logEvent(analytics, name, params); };
+      window.__flushTrackQueue();
+    } catch (e) {
+      console.warn("Nutzungsmessung nicht verfügbar", e);
+    }
+  };
+  window.__disableAnalytics = function () {
+    window.__trackImpl = null;
+    window.__trackQueue = [];
+    try { if (analyticsMod && analytics) analyticsMod.setAnalyticsCollectionEnabled(analytics, false); } catch (e) {}
+    document.cookie.split(";").forEach(function (cookie) {
+      var n = cookie.split("=")[0].trim();
+      if (n.indexOf("_ga") === 0) document.cookie = n + "=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/";
+    });
+  };
+  try { if (localStorage.getItem(window.CONSENT_KEY) === "yes") window.__initAnalytics(); } catch (e) {}
 
   let currentUser = null;
   let appMounted = false;
@@ -365,6 +411,19 @@ const GOAL_QUESTIONS = [
   },
 ];
 
+// Onboarding = Einwilligung (erste Frage) + Ziele-Fragen. Der Ziele-Tab nutzt weiter nur GOAL_QUESTIONS.
+const CONSENT_STEP = {
+  key: "consent",
+  type: "consent",
+  question: "Um die App zu verbessern, werden Nutzungsdaten aufgezeichnet — aber nie der Inhalt deiner Ideen. Bist du damit einverstanden?",
+  options: [
+    { value: "yes", label: "Ja, einverstanden" },
+    { value: "no", label: "Nein, danke" },
+  ],
+  note: "Erfasst wird z. B., welche Bereiche genutzt werden. Du kannst das jederzeit im Profil ändern.",
+};
+const ONBOARD_STEPS = [CONSENT_STEP, ...GOAL_QUESTIONS];
+
 function emptyGoals() {
   return { ideaType: "", monthlyIncome: "", industries: [], timeframe: "", onboarded: false };
 }
@@ -446,6 +505,15 @@ const emptyDraft = () => ({
   status: "idee",
   milestones: [],
 });
+
+// ===== Nutzungsmessung (nur Ereignisse, nie Inhalte) =====
+const track = (name, params) => { if (window.trackEvent) window.trackEvent(name, params); };
+
+function trackMilestoneDelta(original, finalDraft) {
+  const prev = original ? (original.milestones || []).length : 0;
+  const added = (finalDraft.milestones || []).length - prev;
+  if (added > 0) track("meilenstein_hinzugefuegt", { anzahl: added });
+}
 
 // ===== KI-Analyse =====
 const AI_SYSTEM = "Du bist ein erfahrener, nüchterner Startup-Analyst. Du bewertest Geschäftsideen ehrlich und realistisch, ohne zu schmeicheln. Antworte ausschließlich mit gültigem JSON, ohne Erklärtext und ohne Markdown.";
@@ -601,6 +669,14 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut, getToken })
   const [analyzingIds, setAnalyzingIds] = useState({});
   const [analyzeProgress, setAnalyzeProgress] = useState(null);
   const [analysisMsg, setAnalysisMsg] = useState("");
+  const [consent, setConsent] = useState(() => {
+    try { return localStorage.getItem("sb_analytics_consent"); } catch (e) { return null; }
+  });
+  const [consentDraft, setConsentDraft] = useState(null);
+  // Wurde schon früher geantwortet (z. B. über den Dialog), entfällt die Frage im Onboarding
+  const [consentInOnboarding] = useState(() => {
+    try { return localStorage.getItem("sb_analytics_consent") === null; } catch (e) { return true; }
+  });
   const ideasRef = useRef([]);
   ideasRef.current = ideas;
   const aiMode = window.AI_MODE === "runtime" ? "runtime" : (window.AI_ENDPOINT ? "proxy" : "none");
@@ -697,16 +773,36 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut, getToken })
     setGoalsDraft((prev) => ({ ...prev, [key]: value }));
   }
 
+  function setConsentChoice(choice) {
+    try { localStorage.setItem("sb_analytics_consent", choice); } catch (e) { /* ignorieren */ }
+    setConsent(choice);
+    if (choice === "yes") {
+      if (window.__initAnalytics) window.__initAnalytics();
+      track("einwilligung_erteilt");
+    } else if (window.__disableAnalytics) {
+      window.__disableAnalytics();
+    }
+  }
+
   function goalOnboardNext() {
-    if (onboardStep < GOAL_QUESTIONS.length - 1) {
+    if (onboardQ.type === "consent") {
+      if (!consentDraft) return;
+      setConsentChoice(consentDraft);
+      setOnboardStep((s) => s + 1);
+      return;
+    }
+    track("onboarding_schritt", { schritt: onboardStep + 1 });
+    if (onboardStep < onboardSteps.length - 1) {
       setOnboardStep((s) => s + 1);
     } else {
       persistGoals({ ...goalsDraft, onboarded: true });
+      track("onboarding_abgeschlossen");
       setOnboardStep(0);
     }
   }
 
   function goalOnboardSkip() {
+    track("onboarding_uebersprungen", { bei_schritt: onboardStep + 1 });
     persistGoals({ ...emptyGoals(), onboarded: true });
     setOnboardStep(0);
   }
@@ -715,6 +811,7 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut, getToken })
     const ok = await persistGoals({ ...goalsDraft, onboarded: true });
     showToast(ok ? "Ziele gespeichert ✓" : "Speichern fehlgeschlagen — bitte erneut versuchen");
     if (ok) {
+      track("ziele_gespeichert");
       setGoalsSavedFlash(true);
       setTimeout(() => setGoalsSavedFlash(false), 2200);
     }
@@ -722,6 +819,7 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut, getToken })
 
   function removeProject(id) {
     persistProjects(projects.filter((p) => p.id !== id));
+    track("projekt_geloescht", { quelle: "karte" });
   }
 
   function demoteToIdea(id) {
@@ -731,6 +829,7 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut, getToken })
     const restored = { ...rest, topScorerSince: null };
     persistProjects(projects.filter((p) => p.id !== id));
     persist([...ideas, restored]);
+    track("projekt_zurueckgestuft", { quelle: "karte" });
   }
 
   // Prüft bei jeder Datenänderung, wer aktuell Topscorer ist, merkt sich seit wann,
@@ -774,6 +873,7 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut, getToken })
       const remainingIdeas = nextIdeas.filter((i) => i.id !== topIdea.id);
       persist(remainingIdeas);
       persistProjects([...projects, promoted]);
+      track("projekt_befoerdert", { art: "automatisch" });
       return;
     }
 
@@ -850,12 +950,18 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut, getToken })
         analysis: original ? original.analysis : p.analysis,
       } : p));
       persistProjects(next);
+      trackMilestoneDelta(original, finalDraft);
+      track("projekt_bearbeitet");
     } else if (editId) {
       const next = ideas.map((i) => (i.id === editId ? { ...finalDraft, id: editId, createdAt: i.createdAt, analysis: i.analysis } : i));
       persist(next);
+      trackMilestoneDelta(ideas.find((i) => i.id === editId), finalDraft);
+      track("idee_bearbeitet");
     } else {
       const next = [...ideas, { ...finalDraft, id: uid(), createdAt: Date.now() }];
       persist(next);
+      track("idee_angelegt", { anzahl_ideen: next.length });
+      trackMilestoneDelta(null, finalDraft);
     }
     setShowForm(false);
     setDraft(emptyDraft());
@@ -889,9 +995,12 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut, getToken })
     if (!idea || analyzingIds[id] || analyzeProgress) return;
     setAnalysisMsg("");
     setAnalyzingIds((p) => ({ ...p, [id]: true }));
+    track("analyse_gestartet", { art: "einzeln" });
     try {
       await saveAnalysis(id, await runAnalysisFor(idea));
+      track("analyse_abgeschlossen");
     } catch (e) {
+      track("analyse_fehlgeschlagen", { code: String((e && e.code) || "unbekannt") });
       setAnalysisMsg(aiErrorText(e));
     } finally {
       clearAnalyzing(id);
@@ -903,13 +1012,16 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut, getToken })
     if (open.length === 0 || analyzeProgress) return;
     setAnalysisMsg("");
     setAnalyzeProgress({ done: 0, total: open.length });
+    track("analyse_gestartet", { art: "alle", anzahl: open.length });
     let done = 0;
     for (const idea of open) {
       setAnalyzingIds((p) => ({ ...p, [idea.id]: true }));
       try {
         const fresh = ideasRef.current.find((i) => i.id === idea.id) || idea;
         await saveAnalysis(idea.id, await runAnalysisFor(fresh));
+        track("analyse_abgeschlossen");
       } catch (e) {
+        track("analyse_fehlgeschlagen", { code: String((e && e.code) || "unbekannt") });
         setAnalysisMsg(aiErrorText(e));
         clearAnalyzing(idea.id);
         break; // bei einem Fehler nicht weiter anfragen
@@ -932,8 +1044,10 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut, getToken })
     clearTimeout(confirmDeleteTimeoutRef.current);
     if (editTarget === "project") {
       persistProjects(projects.filter((p) => p.id !== editId));
+      track("projekt_geloescht", { quelle: "fenster" });
     } else {
       persist(ideas.filter((i) => i.id !== editId));
+      track("idee_geloescht", { quelle: "fenster" });
     }
     setShowForm(false);
     setDraft(emptyDraft());
@@ -961,6 +1075,7 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut, getToken })
     delete merged.promotedScore;
     persistProjects(projects.filter((p) => p.id !== editId));
     persist([...ideas, merged]);
+    track("projekt_zurueckgestuft", { quelle: "fenster" });
     setShowForm(false);
     setDraft(emptyDraft());
     setEditId(null);
@@ -982,6 +1097,7 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut, getToken })
     const promoted = { ...merged, promotedAt: Date.now(), promotedScore: score };
     persist(ideas.filter((i) => i.id !== editId));
     persistProjects([...projects, promoted]);
+    track("projekt_befoerdert", { art: "manuell" });
     setShowForm(false);
     setDraft(emptyDraft());
     setEditId(null);
@@ -991,10 +1107,12 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut, getToken })
 
   function removeIdea(id) {
     persist(ideas.filter((i) => i.id !== id));
+    track("idee_geloescht", { quelle: "liste" });
   }
 
   function changeStatus(id, status) {
     persist(ideas.map((i) => (i.id === id ? { ...i, status } : i)));
+    track("status_geaendert", { status });
   }
 
   function updateIdeaPosition(id, posX, posY) {
@@ -1232,10 +1350,47 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut, getToken })
   }, [goals]);
 
   const needsOnboarding = loaded && goals === null;
+  // Der Dialog erscheint nur noch für Nutzer, die das Onboarding schon hinter sich haben
+  const consentOpen = loaded && consent === null && !needsOnboarding;
+
+  const onboardSteps = consentInOnboarding ? ONBOARD_STEPS : GOAL_QUESTIONS;
+  const onboardQ = onboardSteps[Math.min(onboardStep, onboardSteps.length - 1)];
+  const onboardSelected = (opt) =>
+    onboardQ.type === "consent"
+      ? consentDraft === opt.value
+      : onboardQ.type === "multi"
+        ? (goalsDraft[onboardQ.key] || []).includes(opt.value)
+        : goalsDraft[onboardQ.key] === opt.value;
+  const onboardPick = (opt) => {
+    if (onboardQ.type === "consent") setConsentDraft(opt.value);
+    else if (onboardQ.type === "multi") toggleGoalMulti(onboardQ.key, opt.value);
+    else selectGoalSingle(onboardQ.key, opt.value);
+  };
+
+  const appOpenedRef = useRef(false);
+  useEffect(() => {
+    if (loaded && consent === "yes" && !appOpenedRef.current) {
+      appOpenedRef.current = true;
+      track("app_geoeffnet", { anzahl_ideen: ideas.length, anzahl_projekte: projects.length });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded, consent]);
+
+  useEffect(() => {
+    if (loaded && consent === "yes" && !needsOnboarding) track("tab_geoeffnet", { tab: activeTab });
+  }, [activeTab, loaded, consent, needsOnboarding]);
+
+  const onboardStartedRef = useRef(false);
+  useEffect(() => {
+    if (needsOnboarding && consent === "yes" && !onboardStartedRef.current) {
+      onboardStartedRef.current = true;
+      track("onboarding_gestartet");
+    }
+  }, [needsOnboarding, consent]);
 
   // Solange ein Fenster (Modal/Onboarding) offen ist, wird der Hintergrund fixiert,
   // damit ausschließlich das Fenster scrollbar ist (wichtig für iOS Safari).
-  const lockScroll = showForm || needsOnboarding;
+  const lockScroll = showForm || needsOnboarding || consentOpen;
   useEffect(() => {
     if (!lockScroll) return;
     const body = document.body;
@@ -1725,6 +1880,9 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut, getToken })
           padding: 11px 22px; font-weight: 700; font-size: 14px; cursor: pointer; font-family: 'Nunito', sans-serif;
         }
         .onboarding-next:hover { background: #33304a; }
+        .onboarding-next:disabled { opacity: 0.4; cursor: default; }
+        .onboarding-lead { font-size: 14.5px; line-height: 1.55; color: var(--ink); margin: 0 0 18px; text-align: center; }
+        .onboarding-note { font-size: 11.5px; color: var(--ink-dim); text-align: center; line-height: 1.4; margin: -10px 0 18px; }
 
         .goals-form { max-width: 640px; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
         .goals-question-block {
@@ -1774,6 +1932,47 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut, getToken })
         .analysis-meta { margin-top: 12px; font-size: 11.5px; color: var(--ink-dim); }
         .analysis-empty { margin: 10px 0 0; font-size: 13.5px; color: var(--ink-dim); }
         .analysis-actions { margin-top: 14px; display: flex; }
+
+        .consent-backdrop {
+          position: fixed; inset: 0; z-index: 80; background: rgba(33,29,51,0.55);
+          display: flex; align-items: flex-end; justify-content: center;
+          overscroll-behavior: contain;
+        }
+        .consent-sheet {
+          background: var(--surface); width: 100%; max-width: 520px;
+          border-radius: 24px 24px 0 0; box-shadow: 0 -12px 40px rgba(33,29,51,0.25);
+          padding: 24px 22px calc(22px + env(safe-area-inset-bottom, 0px));
+        }
+        .consent-title { font-family: 'Baloo 2', cursive; font-size: 19px; font-weight: 600; color: var(--ink); margin-bottom: 8px; }
+        .consent-text { font-size: 14.5px; line-height: 1.55; color: var(--ink); margin: 0 0 18px; }
+        .consent-buttons { display: flex; gap: 10px; }
+        .consent-btn {
+          flex: 1; padding: 13px 10px; border-radius: 999px; font-family: 'Nunito', sans-serif;
+          font-weight: 700; font-size: 14.5px; cursor: pointer; border: 2px solid var(--navy);
+        }
+        .consent-yes { background: var(--navy); color: #fff; }
+        .consent-no { background: transparent; color: var(--navy); }
+        .consent-note { margin-top: 12px; font-size: 11.5px; color: var(--ink-dim); text-align: center; line-height: 1.4; }
+        @media (min-width: 641px) {
+          .consent-backdrop { align-items: center; padding: 20px; }
+          .consent-sheet { border-radius: 24px; }
+        }
+        .switch {
+          position: relative; width: 46px; height: 28px; border-radius: 999px; border: none; flex-shrink: 0;
+          background: var(--line); cursor: pointer; transition: background 0.2s ease; padding: 0;
+        }
+        .switch-on { background: var(--teal); }
+        .switch-knob {
+          position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%;
+          background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.25); transition: transform 0.2s ease;
+        }
+        .switch-on .switch-knob { transform: translateX(18px); }
+        .profile-hint { font-size: 12px; color: var(--ink-dim); line-height: 1.45; padding: 0 0 12px; }
+        .track-row {
+          display: flex; justify-content: space-between; gap: 10px; align-items: baseline;
+          padding: 6px 0; font-size: 12.5px; color: var(--ink); border-top: 1px solid var(--line);
+        }
+        .track-row code { font-size: 11px; color: var(--ink-dim); text-align: right; word-break: break-all; }
 
         .profile-wrap { max-width: 520px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
         .profile-card {
@@ -1940,36 +2139,63 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut, getToken })
         }
       `}</style>
 
+      {consentOpen && (
+        <div className="consent-backdrop">
+          <div className="consent-sheet" role="dialog" aria-modal="true">
+            <div className="consent-title">📊 Hilf mit, die App zu verbessern</div>
+            <p className="consent-text">
+              Um die App zu verbessern, werden Nutzungsdaten aufgezeichnet — aber nie der Inhalt deiner Ideen.
+              Bist du damit einverstanden?
+            </p>
+            <div className="consent-buttons">
+              <button className="consent-btn consent-yes" onClick={() => setConsentChoice("yes")}>Ja, einverstanden</button>
+              <button className="consent-btn consent-no" onClick={() => setConsentChoice("no")}>Nein, danke</button>
+            </div>
+            <div className="consent-note">Erfasst wird z. B., welche Bereiche genutzt werden. Du kannst das jederzeit im Profil ändern.</div>
+          </div>
+        </div>
+      )}
+
       {needsOnboarding && (
         <div className="onboarding-screen">
           <div className="onboarding-card">
             <div className="onboarding-progress">
-              {GOAL_QUESTIONS.map((_, i) => (
+              {onboardSteps.map((_, i) => (
                 <span key={i} className={`onboarding-dot ${i === onboardStep ? "onboarding-dot-active" : ""} ${i < onboardStep ? "onboarding-dot-done" : ""}`}></span>
               ))}
             </div>
-            <h2 className="onboarding-question">{GOAL_QUESTIONS[onboardStep].question}</h2>
-            <div className={`onboarding-options ${GOAL_QUESTIONS[onboardStep].type === "multi" ? "onboarding-options-grid" : ""}`}>
-              {GOAL_QUESTIONS[onboardStep].options.map((opt) => {
-                const q = GOAL_QUESTIONS[onboardStep];
-                const selected = q.type === "multi"
-                  ? (goalsDraft[q.key] || []).includes(opt.value)
-                  : goalsDraft[q.key] === opt.value;
-                return (
-                  <button
-                    key={opt.value}
-                    className={`onboarding-option ${selected ? "onboarding-option-selected" : ""}`}
-                    onClick={() => (q.type === "multi" ? toggleGoalMulti(q.key, opt.value) : selectGoalSingle(q.key, opt.value))}
-                  >
-                    {opt.label}
-                  </button>
-                );
-              })}
+            {onboardQ.type === "consent" ? (
+              <>
+                <h2 className="onboarding-question">📊 Hilf mit, die App zu verbessern</h2>
+                <p className="onboarding-lead">{onboardQ.question}</p>
+              </>
+            ) : (
+              <h2 className="onboarding-question">{onboardQ.question}</h2>
+            )}
+            <div className={`onboarding-options ${onboardQ.type === "multi" ? "onboarding-options-grid" : ""}`}>
+              {onboardQ.options.map((opt) => (
+                <button
+                  key={opt.value}
+                  className={`onboarding-option ${onboardSelected(opt) ? "onboarding-option-selected" : ""}`}
+                  onClick={() => onboardPick(opt)}
+                >
+                  {opt.label}
+                </button>
+              ))}
             </div>
+            {onboardQ.note && <div className="onboarding-note">{onboardQ.note}</div>}
             <div className="onboarding-actions">
-              <button className="onboarding-skip" onClick={goalOnboardSkip}>Später ausfüllen</button>
-              <button className="onboarding-next" onClick={goalOnboardNext}>
-                {onboardStep < GOAL_QUESTIONS.length - 1 ? "Weiter →" : "Fertig"}
+              {onboardQ.type === "consent" ? (
+                <span></span>
+              ) : (
+                <button className="onboarding-skip" onClick={goalOnboardSkip}>Später ausfüllen</button>
+              )}
+              <button
+                className="onboarding-next"
+                onClick={goalOnboardNext}
+                disabled={onboardQ.type === "consent" && !consentDraft}
+              >
+                {onboardStep < onboardSteps.length - 1 ? "Weiter →" : "Fertig"}
               </button>
             </div>
           </div>
@@ -2013,8 +2239,8 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut, getToken })
           </div>
           <div className="sortrow" style={{ gap: "16px" }}>
             <div className="view-toggle">
-              <button className={viewMode === "tabelle" ? "active" : ""} onClick={() => setViewMode("tabelle")}>Tabelle</button>
-              <button className={viewMode === "bubbles" ? "active" : ""} onClick={() => setViewMode("bubbles")}>Bubbles</button>
+              <button className={viewMode === "tabelle" ? "active" : ""} onClick={() => { setViewMode("tabelle"); track("ansicht_gewechselt", { ansicht: "tabelle" }); }}>Tabelle</button>
+              <button className={viewMode === "bubbles" ? "active" : ""} onClick={() => { setViewMode("bubbles"); track("ansicht_gewechselt", { ansicht: "bubbles" }); }}>Bubbles</button>
             </div>
           </div>
         </div>
@@ -2411,6 +2637,37 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut, getToken })
                 </div>
               )}
             </div>
+
+            <div className="profile-card profile-info">
+              <div className="profile-info-row">
+                <span>📊 Nutzungsdaten teilen</span>
+                <button
+                  className={`switch ${consent === "yes" ? "switch-on" : ""}`}
+                  onClick={() => setConsentChoice(consent === "yes" ? "no" : "yes")}
+                  role="switch"
+                  aria-checked={consent === "yes"}
+                  aria-label="Nutzungsdaten teilen"
+                >
+                  <span className="switch-knob"></span>
+                </button>
+              </div>
+              <div className="profile-hint">Um die App zu verbessern, wird erfasst, welche Bereiche genutzt werden — nie der Inhalt deiner Ideen.</div>
+            </div>
+
+            {window.APP_VARIANT && (
+              <div className="profile-card profile-info">
+                <div className="profile-info-row">
+                  <span>🧪 Test: erfasste Ereignisse</span><b>{(window.__trackLog || []).length}</b>
+                </div>
+                {consent !== "yes" && <div className="profile-hint">Messung ist aus — mit Zustimmung erscheinen hier die Ereignisse.</div>}
+                {(window.__trackLog || []).slice(-10).reverse().map((e, i) => (
+                  <div className="track-row" key={i}>
+                    <span>{e.name}</span>
+                    <code>{e.params && Object.keys(e.params).length ? JSON.stringify(e.params) : ""}</code>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {onSignOut && (
               <button className="btn-secondary profile-signout" onClick={onSignOut}>Abmelden</button>
