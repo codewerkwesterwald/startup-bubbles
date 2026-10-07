@@ -127,7 +127,7 @@
 
 <script>
   // ===== APP-VERSION — bei jedem Update erhöhen =====
-  window.APP_VERSION = "1.4.5";
+  window.APP_VERSION = "1.4.6";
   // URL des KI-Proxys (Cloudflare Worker) hier eintragen, z. B. "https://startup-bubbles-ki.DEINNAME.workers.dev"
   window.AI_ENDPOINT = "";
   window.APP_BUILD = "05.10.2026";
@@ -2067,6 +2067,21 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut, getToken })
           pointer-events: none;
           animation: stale-pulse 2.4s ease-in-out infinite;
         }
+        .bubble-gold::before {
+          content: ""; position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
+          background: linear-gradient(115deg, transparent 32%, rgba(255,255,255,0.75) 50%, transparent 68%);
+          background-size: 260% 100%; background-position: 160% 0;
+          animation: gold-shimmer 3.2s ease-in-out infinite;
+        }
+        .bubble-gold { animation: gold-glow 2.6s ease-in-out infinite; }
+        @keyframes gold-shimmer {
+          0% { background-position: 160% 0; }
+          55%, 100% { background-position: -60% 0; }
+        }
+        @keyframes gold-glow {
+          0%, 100% { box-shadow: 0 14px 26px -8px rgba(240,180,20,0.7), 0 0 14px 2px rgba(255,205,60,0.45), inset 0 3px 6px rgba(255,255,255,0.55), inset 0 -8px 12px rgba(120,70,0,0.25); }
+          50% { box-shadow: 0 14px 30px -6px rgba(240,180,20,0.9), 0 0 30px 8px rgba(255,205,60,0.7), inset 0 3px 6px rgba(255,255,255,0.7), inset 0 -8px 12px rgba(120,70,0,0.25); }
+        }
         @keyframes stale-pulse {
           0%, 100% { box-shadow: 0 0 0 0 rgba(255, 93, 143, 0.5); }
           50% { box-shadow: 0 0 0 10px rgba(255, 93, 143, 0); }
@@ -2302,24 +2317,28 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut, getToken })
               const size = bubbleSizeById[idea.id] || 90;
               const fontSize = idea.status === "verworfen" ? 9 : 11 + scoreToT(score) * 6.5 + (idea.status !== "verworfen" && scoreSpan >= 0.05 && scoreToT(score) >= 0.999 ? 2 : 0);
               const stale = isStale(idea);
+              const isTop = idea.status !== "verworfen" && scoreSpan >= 0.05 && scoreToT(score) >= 0.999;
+              const fg = isTop ? "#4A2F00" : st.text;
               return (
                 <div
                   key={idea.id}
                   ref={(el) => { nodeRefs.current[idea.id] = el; }}
-                  className={`bubble-float${stale ? " bubble-stale" : ""}`}
+                  className={`bubble-float${stale ? " bubble-stale" : ""}${isTop ? " bubble-gold" : ""}`}
                   onPointerDown={(e) => handleBubblePointerDown(e, idea)}
                   style={{
                     width: size,
                     height: size,
-                    color: st.text,
+                    color: fg,
                     border: "none",
-                    backgroundImage: `radial-gradient(circle at 32% 24%, ${shade(st.color, 0.5)} 0%, ${st.color} 55%, ${shade(st.color, -0.15)} 100%)`,
+                    backgroundImage: isTop
+                      ? "radial-gradient(circle at 32% 24%, #FFF3B0 0%, #FFD54A 40%, #E8A817 75%, #B9780A 100%)"
+                      : `radial-gradient(circle at 32% 24%, ${shade(st.color, 0.5)} 0%, ${st.color} 55%, ${shade(st.color, -0.15)} 100%)`,
                     boxShadow: `0 14px 26px -8px ${st.color}b3, inset 0 3px 6px rgba(255,255,255,0.4), inset 0 -8px 12px rgba(0,0,0,0.15)`,
                   }}
                   title={`${idea.description || idea.title}${stale ? " — seit über einer Woche kein Meilenstein" : ""}`}
                 >
-                  <div className="b-title" style={{ fontSize, textShadow: st.text === "#fff" ? "0 1px 3px rgba(0,0,0,0.3)" : "0 1px 0 rgba(255,255,255,0.5)" }}>{idea.title}</div>
-                  <div className="b-score" style={{ color: st.text, textShadow: st.text === "#fff" ? "0 1px 2px rgba(0,0,0,0.3)" : "0 1px 0 rgba(255,255,255,0.5)" }}>{score.toFixed(1)}</div>
+                  <div className="b-title" style={{ fontSize, textShadow: !isTop && st.text === "#fff" ? "0 1px 3px rgba(0,0,0,0.3)" : "0 1px 0 rgba(255,255,255,0.5)" }}>{idea.title}</div>
+                  <div className="b-score" style={{ color: fg, textShadow: !isTop && st.text === "#fff" ? "0 1px 2px rgba(0,0,0,0.3)" : "0 1px 0 rgba(255,255,255,0.5)" }}>{isTop ? "👑 " : ""}{score.toFixed(1)}</div>
                   {recentMilestoneCount(idea) > 0 && (
                     <div className="bubble-momentum" title={`${recentMilestoneCount(idea)} Meilenstein(e) in den letzten 7 Tagen`}>
                       🔥{recentMilestoneCount(idea)}
