@@ -127,7 +127,7 @@
 
 <script>
   // ===== APP-VERSION — bei jedem Update erhöhen =====
-  window.APP_VERSION = "1.4.0";
+  window.APP_VERSION = "1.4.2";
   // URL des KI-Proxys (Cloudflare Worker) hier eintragen, z. B. "https://startup-bubbles-ki.DEINNAME.workers.dev"
   window.AI_ENDPOINT = "";
   window.APP_BUILD = "05.10.2026";
@@ -340,6 +340,22 @@ const STATUS = {
   validiert: { label: "Validiert", color: "#06D6A0", icon: "✅", text: "#0B3B30" },
   verworfen: { label: "Verworfen", color: "#FF5D8F", icon: "🗑️", text: "#fff" },
 };
+
+// Eigene Status für Projekte (Ideen behalten ihre eigenen oben)
+const PROJECT_STATUS = {
+  aktiv: { label: "Aktiv", color: "#3DDC84", icon: "🚀", text: "#0B3B22" },
+  warten: { label: "Wartet", color: "#9B9BAE", icon: "⏸️", text: "#fff" },
+  problem: { label: "Problem", color: "#FF9F1C", icon: "⚠️", text: "#3B2300" },
+  abgeschlossen: { label: "Abgeschlossen", color: "#3A86FF", icon: "🏁", text: "#fff" },
+  gescheitert: { label: "Gescheitert", color: "#FF5D8F", icon: "💥", text: "#fff" },
+};
+function normalizeProject(p) {
+  if (!p || PROJECT_STATUS[p.status]) return p;
+  return { ...p, ideaStatus: p.ideaStatus || p.status, status: "aktiv" };
+}
+function ideaStatusOf(p) {
+  return p && p.ideaStatus && STATUS[p.ideaStatus] ? p.ideaStatus : "idee";
+}
 
 function hexToRgb(hex) {
   const h = hex.replace("#", "");
@@ -707,7 +723,7 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut, getToken })
       try {
         const resP = await window.storage.get(PROJECTS_STORAGE_KEY, false);
         if (resP && resP.value) {
-          setProjects(JSON.parse(resP.value));
+          setProjects(JSON.parse(resP.value).map(normalizeProject));
         }
       } catch (e) {
         // noch keine Projekte vorhanden
@@ -827,8 +843,8 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut, getToken })
   function demoteToIdea(id) {
     const project = projects.find((p) => p.id === id);
     if (!project) return;
-    const { promotedAt, promotedScore, ...rest } = project;
-    const restored = { ...rest, topScorerSince: null };
+    const { promotedAt, promotedScore, ideaStatus, ...rest } = project;
+    const restored = { ...rest, status: ideaStatusOf(project), topScorerSince: null };
     persistProjects(projects.filter((p) => p.id !== id));
     persist([...ideas, restored]);
     track("projekt_zurueckgestuft", { quelle: "karte" });
@@ -871,7 +887,7 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut, getToken })
     const currentTop = nextIdeas.find((i) => i.id === topIdea.id);
     if (currentTop.topScorerSince && now - currentTop.topScorerSince >= TOP_SCORER_PROJECT_MS) {
       const { topScorerSince, ...rest } = currentTop;
-      const promoted = { ...rest, promotedAt: now, promotedScore: topScore };
+      const promoted = { ...rest, ideaStatus: currentTop.status, status: "aktiv", promotedAt: now, promotedScore: topScore };
       const remainingIdeas = nextIdeas.filter((i) => i.id !== topIdea.id);
       persist(remainingIdeas);
       persistProjects([...projects, promoted]);
@@ -907,7 +923,7 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut, getToken })
   }
 
   function openProjectEdit(project) {
-    setDraft({ ...emptyDraft(), ...project, milestones: project.milestones || [] });
+    setDraft({ ...emptyDraft(), ...normalizeProject(project), milestones: project.milestones || [] });
     setEditId(project.id);
     setEditTarget("project");
     setShowForm(true);
@@ -1073,6 +1089,8 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut, getToken })
     }
     const original = projects.find((p) => p.id === editId);
     const merged = { ...finalDraft, id: editId, createdAt: original ? original.createdAt : Date.now(), topScorerSince: null, analysis: original ? original.analysis : finalDraft.analysis };
+    merged.status = ideaStatusOf(original);
+    delete merged.ideaStatus;
     delete merged.promotedAt;
     delete merged.promotedScore;
     persistProjects(projects.filter((p) => p.id !== editId));
@@ -1096,7 +1114,7 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut, getToken })
     const merged = { ...finalDraft, id: editId, createdAt: original ? original.createdAt : Date.now(), analysis: original ? original.analysis : finalDraft.analysis };
     delete merged.topScorerSince;
     const score = computeScore(merged);
-    const promoted = { ...merged, promotedAt: Date.now(), promotedScore: score };
+    const promoted = { ...merged, ideaStatus: merged.status, status: "aktiv", promotedAt: Date.now(), promotedScore: score };
     persist(ideas.filter((i) => i.id !== editId));
     persistProjects([...projects, promoted]);
     track("projekt_befoerdert", { art: "manuell" });
@@ -1201,7 +1219,9 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut, getToken })
     const weights = ideasList.map((idea) => {
       if (idea.status === "verworfen") return 0.04; // ganz klein
       const t = Math.pow(scoreToT(computeScore(idea)), 1.8); // steile Kurve: Beste deutlich größer
-      return 0.22 + 1.3 * t;
+      const w0 = 0.22 + 1.3 * t;
+      // Die beste Idee bekommt einen Extra-Faktor, damit sie immer sofort auffällt
+      return scoreSpan >= 0.05 && t >= 0.999 ? w0 * 1.8 : w0;
     });
     const totalWeight = weights.reduce((a, b) => a + b, 0) || 1;
 
@@ -2285,7 +2305,7 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut, getToken })
               const score = computeScore(idea);
               const st = STATUS[idea.status];
               const size = bubbleSizeById[idea.id] || 90;
-              const fontSize = idea.status === "verworfen" ? 9 : 11 + scoreToT(score) * 6.5;
+              const fontSize = idea.status === "verworfen" ? 9 : 11 + scoreToT(score) * 6.5 + (idea.status !== "verworfen" && scoreSpan >= 0.05 && scoreToT(score) >= 0.999 ? 2 : 0);
               const stale = isStale(idea);
               return (
                 <div
@@ -2425,7 +2445,7 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut, getToken })
           ) : (
             <div className="project-list">
               {[...projects].sort((a, b) => b.promotedAt - a.promotedAt).map((p) => {
-                const st = STATUS[p.status] || STATUS.idee;
+                const st = PROJECT_STATUS[p.status] || PROJECT_STATUS.aktiv;
                 return (
                   <div className="project-card" key={p.id}>
                     <div className="project-card-top">
@@ -2820,7 +2840,7 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut, getToken })
                 value={draft.status}
                 onChange={(e) => setDraft({ ...draft, status: e.target.value })}
               >
-                {Object.entries(STATUS).map(([key, s]) => (
+                {Object.entries(editTarget === "project" ? PROJECT_STATUS : STATUS).map(([key, s]) => (
                   <option key={key} value={key}>{s.icon} {s.label}</option>
                 ))}
               </select>
