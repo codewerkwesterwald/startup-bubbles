@@ -127,7 +127,7 @@
 
 <script>
   // ===== APP-VERSION — bei jedem Update erhöhen =====
-  window.APP_VERSION = "1.3.1";
+  window.APP_VERSION = "1.4.0";
   // URL des KI-Proxys (Cloudflare Worker) hier eintragen, z. B. "https://startup-bubbles-ki.DEINNAME.workers.dev"
   window.AI_ENDPOINT = "";
   window.APP_BUILD = "05.10.2026";
@@ -338,8 +338,6 @@ const STATUS = {
   warten: { label: "Warten", color: "#9B9BAE", icon: "⏸️", text: "#fff" },
   pruefung: { label: "In Prüfung", color: "#FFC93C", icon: "🔍", text: "#211D33" },
   validiert: { label: "Validiert", color: "#06D6A0", icon: "✅", text: "#0B3B30" },
-  umsetzung: { label: "In Umsetzung", color: "#3A86FF", icon: "🛠️", text: "#fff" },
-  live: { label: "Live", color: "#3DDC84", icon: "🚀", text: "#0B3B22" },
   verworfen: { label: "Verworfen", color: "#FF5D8F", icon: "🗑️", text: "#fff" },
 };
 
@@ -697,7 +695,11 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut, getToken })
       try {
         const res = await window.storage.get(STORAGE_KEY, false);
         if (res && res.value) {
-          setIdeas(JSON.parse(res.value));
+          setIdeas(
+            JSON.parse(res.value).map((i) =>
+              i && (i.status === "umsetzung" || i.status === "live") ? { ...i, status: "validiert" } : i
+            )
+          );
         }
       } catch (e) {
         // key not present yet — that's fine, start empty
@@ -1170,14 +1172,16 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut, getToken })
 
   // Größe relativ zur aktuellen Score-Spanne berechnen, nicht am starren 0–10-Raster,
   // damit Unterschiede zwischen den Ideen (v. a. Rang 1 vs. 2 vs. 3 ...) deutlich sichtbar sind.
-  const filteredScores = filtered.map((i) => computeScore(i));
+  // Verworfene Ideen zählen nicht zur Spanne, damit sie die Skala der übrigen nicht verzerren.
+  const filteredScores = filtered.filter((i) => i.status !== "verworfen").map((i) => computeScore(i));
   const scoreMax = filteredScores.length ? Math.max(...filteredScores) : 10;
   const scoreMin = filteredScores.length ? Math.min(...filteredScores) : 0;
+  const DISCARDED_SIZE = 30; // verworfene Ideen: winzig, aber noch antippbar
   const scoreSpan = scoreMax - scoreMin;
 
   function scoreToT(score) {
     if (scoreSpan < 0.05) return 0.55; // alle Ideen etwa gleich stark bewertet
-    return (score - scoreMin) / scoreSpan;
+    return Math.max(0, Math.min(1, (score - scoreMin) / scoreSpan));
   }
 
   // Flächenbasierter Größenalgorithmus: verteilt einen festen Anteil der verfügbaren
@@ -1195,8 +1199,9 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut, getToken })
     const targetTotalArea = containerArea * PACKING_FACTOR;
 
     const weights = ideasList.map((idea) => {
-      const t = Math.pow(scoreToT(computeScore(idea)), 1.3);
-      return 0.3 + 0.7 * t; // Mindestanteil, damit die kleinste Bubble nie auf 0 schrumpft
+      if (idea.status === "verworfen") return 0.04; // ganz klein
+      const t = Math.pow(scoreToT(computeScore(idea)), 1.8); // steile Kurve: Beste deutlich größer
+      return 0.22 + 1.3 * t;
     });
     const totalWeight = weights.reduce((a, b) => a + b, 0) || 1;
 
@@ -1207,7 +1212,9 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut, getToken })
       const share = weights[i] / totalWeight;
       const area = targetTotalArea * share;
       let diameter = 2 * Math.sqrt(area / Math.PI);
-      diameter = Math.max(minAllowed, Math.min(maxAllowed, diameter));
+      diameter = idea.status === "verworfen"
+        ? Math.max(DISCARDED_SIZE, Math.min(minAllowed - 8, diameter))
+        : Math.max(minAllowed, Math.min(maxAllowed, diameter));
       sizeMap[idea.id] = diameter;
     });
     return sizeMap;
@@ -2278,7 +2285,7 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut, getToken })
               const score = computeScore(idea);
               const st = STATUS[idea.status];
               const size = bubbleSizeById[idea.id] || 90;
-              const fontSize = 11 + scoreToT(score) * 6.5;
+              const fontSize = idea.status === "verworfen" ? 9 : 11 + scoreToT(score) * 6.5;
               const stale = isStale(idea);
               return (
                 <div
