@@ -127,7 +127,7 @@
 
 <script>
   // ===== APP-VERSION — bei jedem Update erhöhen =====
-  window.APP_VERSION = "1.4.2";
+  window.APP_VERSION = "1.4.5";
   // URL des KI-Proxys (Cloudflare Worker) hier eintragen, z. B. "https://startup-bubbles-ki.DEINNAME.workers.dev"
   window.AI_ENDPOINT = "";
   window.APP_BUILD = "05.10.2026";
@@ -335,7 +335,6 @@ const { useState, useEffect, useRef } = React;
 
 const STATUS = {
   idee: { label: "Idee", color: "#9B8AE0", icon: "💡", text: "#fff" },
-  warten: { label: "Warten", color: "#9B9BAE", icon: "⏸️", text: "#fff" },
   pruefung: { label: "In Prüfung", color: "#FFC93C", icon: "🔍", text: "#211D33" },
   validiert: { label: "Validiert", color: "#06D6A0", icon: "✅", text: "#0B3B30" },
   verworfen: { label: "Verworfen", color: "#FF5D8F", icon: "🗑️", text: "#fff" },
@@ -354,6 +353,7 @@ function normalizeProject(p) {
   return { ...p, ideaStatus: p.ideaStatus || p.status, status: "aktiv" };
 }
 function ideaStatusOf(p) {
+  if (p && p.ideaStatus === "warten") return "pruefung";
   return p && p.ideaStatus && STATUS[p.ideaStatus] ? p.ideaStatus : "idee";
 }
 
@@ -471,7 +471,7 @@ function momentumBonus(idea) {
 // (die Flamme also erloschen ist) und eine weitere Woche vergeht, entsteht ein
 // Eisblock. Pro zusätzlicher Woche ohne Aktivität kommt ein weiterer dazu.
 function iceBlockCount(idea) {
-  if (idea.status === "warten") return 0;
+  if (idea.status === "pruefung") return 0;
   const elapsed = Date.now() - lastActivityTime(idea);
   if (elapsed <= WEEK_MS) return 0;
   const extraWeeks = Math.floor((elapsed - WEEK_MS) / WEEK_MS);
@@ -502,7 +502,7 @@ function scoreTier(score) {
 const STALE_MS = WEEK_MS;
 
 function isStale(idea) {
-  if (idea.status === "warten") return false;
+  if (idea.status === "pruefung") return false;
   return Date.now() - lastActivityTime(idea) > STALE_MS;
 }
 
@@ -712,9 +712,12 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut, getToken })
         const res = await window.storage.get(STORAGE_KEY, false);
         if (res && res.value) {
           setIdeas(
-            JSON.parse(res.value).map((i) =>
-              i && (i.status === "umsetzung" || i.status === "live") ? { ...i, status: "validiert" } : i
-            )
+            JSON.parse(res.value).map((i) => {
+              if (!i) return i;
+              if (i.status === "umsetzung" || i.status === "live") return { ...i, status: "validiert" };
+              if (i.status === "warten") return { ...i, status: "pruefung" };
+              return i;
+            })
           );
         }
       } catch (e) {
@@ -1773,7 +1776,8 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut, getToken })
           color-scheme: light;
         }
         .milestone-add-row .btn-secondary { padding: 8px 14px; white-space: nowrap; }
-        .modal-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 22px; gap: 10px; flex-wrap: wrap; }
+        .modal-actions { display: flex; align-items: stretch; margin-top: 22px; gap: 8px; flex-wrap: wrap; }
+        .modal-actions button { flex: 1 1 auto; min-height: 42px; padding: 0 14px; line-height: 1.1; font-size: 13px; white-space: nowrap; display: inline-flex; align-items: center; justify-content: center; }
         .modal-actions-right { display: flex; gap: 10px; }
         .modal-actions-left { display: flex; gap: 8px; flex-wrap: wrap; }
         .btn-danger {
@@ -2046,15 +2050,6 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut, getToken })
         }
         .bubble-float:active { cursor: grabbing; }
         .bubble-float:hover { filter: brightness(1.18); z-index: 5; }
-        .bubble-delete {
-          position: absolute; top: 6px; right: 6px; width: 20px; height: 20px;
-          border-radius: 50%; border: none; background: rgba(0,0,0,0.4); color: #fff;
-          font-size: 14px; line-height: 1; cursor: pointer; padding: 0;
-          display: flex; align-items: center; justify-content: center;
-          opacity: 0; transition: opacity 0.15s ease, background 0.15s ease;
-        }
-        .bubble-float:hover .bubble-delete { opacity: 1; }
-        .bubble-delete:hover { background: var(--rust); }
 
         .bubble-momentum {
           position: absolute; bottom: 6px; left: 6px;
@@ -2335,16 +2330,6 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut, getToken })
                       ❄️{iceBlockCount(idea)}
                     </div>
                   )}
-                  <button
-                    type="button"
-                    className="bubble-delete"
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onClick={(e) => { e.stopPropagation(); removeIdea(idea.id); }}
-                    aria-label="Idee löschen"
-                    title="Idee löschen"
-                  >
-                    ×
-                  </button>
                 </div>
               );
             })}
@@ -2846,33 +2831,29 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut, getToken })
               </select>
             </div>
             <div className="modal-actions">
-              <div className="modal-actions-left">
-                {editTarget === "idea" && editId && (
-                  <button className="btn-project" onClick={promoteToProjectManually} title="Diese Idee direkt als Projekt markieren">
-                    🏆 Zum Projekt machen
-                  </button>
-                )}
-                {editTarget === "project" && (
-                  <button className="btn-project" onClick={demoteToIdeaFromModal} title="Dieses Projekt zurück zu den Ideen verschieben">
-                    ↩️ Zurück zu Ideen
-                  </button>
-                )}
-                {editId && (
-                  <button
-                    className={`btn-danger ${confirmDelete ? "btn-danger-confirm" : ""}`}
-                    onClick={deleteFromModal}
-                    title={editTarget === "project" ? "Dieses Projekt löschen" : "Diese Idee löschen"}
-                  >
-                    {confirmDelete ? "Wirklich löschen?" : "🗑️ Löschen"}
-                  </button>
-                )}
-              </div>
-              <div className="modal-actions-right">
-                <button className="btn-secondary" onClick={() => setShowForm(false)}>Abbrechen</button>
-                <button className="btn-primary" onClick={saveDraft} disabled={!draft.title.trim()}>
-                  {editId ? "Speichern" : "Idee anlegen"}
+              <button className="btn-secondary" onClick={() => setShowForm(false)}>Abbrechen</button>
+              <button className="btn-primary" onClick={saveDraft} disabled={!draft.title.trim()}>
+                {editId ? "Speichern" : "Idee anlegen"}
+              </button>
+              {editTarget === "idea" && editId && (
+                <button className="btn-project" onClick={promoteToProjectManually} title="Diese Idee direkt als Projekt markieren">
+                  🏆 Zum Projekt machen
                 </button>
-              </div>
+              )}
+              {editTarget === "project" && (
+                <button className="btn-project" onClick={demoteToIdeaFromModal} title="Dieses Projekt zurück zu den Ideen verschieben">
+                  ↩️ Zurück zu Ideen
+                </button>
+              )}
+              {editId && (
+                <button
+                  className={`btn-danger ${confirmDelete ? "btn-danger-confirm" : ""}`}
+                  onClick={deleteFromModal}
+                  title={editTarget === "project" ? "Dieses Projekt löschen" : "Diese Idee löschen"}
+                >
+                  {confirmDelete ? "Wirklich löschen?" : "🗑️ Löschen"}
+                </button>
+              )}
             </div>
           </div>
         </div>
