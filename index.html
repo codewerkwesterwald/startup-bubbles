@@ -127,7 +127,7 @@
 
 <script>
   // ===== APP-VERSION — bei jedem Update erhöhen =====
-  window.APP_VERSION = "1.4.8";
+  window.APP_VERSION = "1.4.9";
   // URL des KI-Proxys (Cloudflare Worker) hier eintragen, z. B. "https://startup-bubbles-ki.DEINNAME.workers.dev"
   window.AI_ENDPOINT = "";
   window.APP_BUILD = "05.10.2026";
@@ -355,6 +355,64 @@ function normalizeProject(p) {
 function ideaStatusOf(p) {
   if (p && p.ideaStatus === "warten") return "pruefung";
   return p && p.ideaStatus && STATUS[p.ideaStatus] ? p.ideaStatus : "idee";
+}
+
+// ===== Projekt-Raketen: Größe und Ausstattung wachsen mit den Meilensteinen =====
+const ROCKET_LEVELS = [0, 2, 4, 7, 11]; // ab so vielen Meilensteinen Stufe 1…5
+function rocketLevel(p) {
+  const m = (p.milestones || []).length;
+  let lvl = 1;
+  ROCKET_LEVELS.forEach((t, i) => { if (m >= t) lvl = i + 1; });
+  return lvl;
+}
+function rocketHeight(p) {
+  return 92 + Math.min((p.milestones || []).length, 12) * 10; // 92–212 px
+}
+
+function RocketSvg({ level, color, flying, uid }) {
+  const gold = level >= 5;
+  const body = gold ? `url(#rb${uid})` : "#F6F2FF";
+  const accent = gold ? "#D99A0B" : color;
+  return (
+    <svg viewBox="-14 -6 88 140" width="100%" height="100%" style={{ overflow: "visible" }}>
+      <defs>
+        <linearGradient id={`rb${uid}`} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#FFF3B0" />
+          <stop offset="0.5" stopColor="#FFD54A" />
+          <stop offset="1" stopColor="#D99A0B" />
+        </linearGradient>
+      </defs>
+      {flying && (
+        <g className="rocket-flame">
+          <path d="M23 96 Q30 138 37 96 Z" fill="#FF9F1C" />
+          <path d="M26 96 Q30 124 34 96 Z" fill="#FFE27A" />
+        </g>
+      )}
+      {level >= 4 && (
+        <g>
+          <path d="M-8 52 Q-4 40 0 52 L0 90 L-8 90 Z" fill={body} stroke={accent} strokeWidth="1.2" />
+          <path d="M60 52 Q64 40 68 52 L68 90 L60 90 Z" fill={body} stroke={accent} strokeWidth="1.2" transform="translate(-8 0)" />
+          <path d="M-8 52 Q-4 40 0 52 Z" fill={accent} />
+          <path d="M52 52 Q56 40 60 52 Z" fill={accent} />
+        </g>
+      )}
+      <path d={level >= 3 ? "M18 60 L1 102 L18 92 Z" : "M18 70 L6 98 L18 90 Z"} fill={accent} />
+      <path d={level >= 3 ? "M42 60 L59 102 L42 92 Z" : "M42 70 L54 98 L42 90 Z"} fill={accent} />
+      <path d="M30 2 C46 24 48 62 43 92 L17 92 C12 62 14 24 30 2 Z" fill={body} stroke={accent} strokeWidth="1.4" />
+      <path d="M30 2 C37 11 41 21 42 30 L18 30 C19 21 23 11 30 2 Z" fill={accent} />
+      {level >= 3 && <rect x="16" y="70" width="28" height="6" fill={accent} opacity="0.9" />}
+      <circle cx="30" cy="48" r={level >= 2 ? 8 : 6} fill="#9ED8FF" stroke={accent} strokeWidth="2" />
+      <circle cx="27.5" cy="45.5" r="2" fill="#fff" opacity="0.8" />
+      <rect x="23" y="92" width="14" height="6" rx="2" fill="#6C6193" />
+      {gold && (
+        <g fill="#FFF3B0" className="rocket-sparkle">
+          <path d="M-10 20 l2 5 5 2 -5 2 -2 5 -2 -5 -5 -2 5 -2z" />
+          <path d="M66 34 l2 5 5 2 -5 2 -2 5 -2 -5 -5 -2 5 -2z" />
+          <path d="M64 -2 l1.5 4 4 1.5 -4 1.5 -1.5 4 -1.5 -4 -4 -1.5 4 -1.5z" />
+        </g>
+      )}
+    </svg>
+  );
 }
 
 function hexToRgb(hex) {
@@ -1858,6 +1916,41 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut, getToken })
         .project-list {
           max-width: 920px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px;
         }
+        .rocket-sky {
+          max-width: 920px; margin: 0 auto; border-radius: 24px; padding: 28px 12px 20px; overflow: hidden;
+          background:
+            radial-gradient(1.5px 1.5px at 12% 18%, #fff 50%, transparent 51%),
+            radial-gradient(1px 1px at 38% 62%, #fff 50%, transparent 51%),
+            radial-gradient(1.5px 1.5px at 66% 24%, #fff 50%, transparent 51%),
+            radial-gradient(1px 1px at 84% 70%, #fff 50%, transparent 51%),
+            radial-gradient(1px 1px at 52% 10%, #fff 50%, transparent 51%),
+            radial-gradient(1.5px 1.5px at 24% 82%, #fff 50%, transparent 51%),
+            linear-gradient(180deg, #1B1646 0%, #3A2A7A 55%, #6C4BB5 100%);
+          box-shadow: var(--card-shadow);
+        }
+        .rocket-row { display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-end; gap: 26px 22px; }
+        .rocket-item {
+          display: flex; flex-direction: column; align-items: center; text-align: center;
+          width: 128px; cursor: pointer; animation: rocket-bob 3.6s ease-in-out infinite;
+        }
+        .rocket-fig { transition: transform 0.2s ease; }
+        .rocket-item:hover .rocket-fig { transform: scale(1.06); }
+        .rocket-name { color: #fff; font-family: 'Baloo 2', cursive; font-weight: 600; font-size: 14px; line-height: 1.15; margin-top: 8px; word-break: break-word; }
+        .rocket-badge { margin-top: 5px; font-size: 11px; font-weight: 800; padding: 2px 9px; border-radius: 999px; }
+        .rocket-meta { margin-top: 4px; font-size: 10.5px; color: rgba(255,255,255,0.7); }
+        .rocket-flame { transform-origin: 30px 96px; animation: rocket-flicker 0.18s ease-in-out infinite alternate; }
+        .rocket-sparkle { animation: rocket-twinkle 1.6s ease-in-out infinite; }
+        .rocket-warten { animation-duration: 6s; }
+        .rocket-warten .rocket-fig { opacity: 0.85; }
+        .rocket-problem .rocket-fig { animation: rocket-shake 0.5s ease-in-out infinite; }
+        .rocket-abgeschlossen { animation-duration: 5s; }
+        .rocket-gescheitert { animation: none; }
+        .rocket-gescheitert .rocket-fig { transform: rotate(68deg); opacity: 0.55; filter: grayscale(0.7); }
+        .rocket-gescheitert:hover .rocket-fig { transform: rotate(68deg) scale(1.04); }
+        @keyframes rocket-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-12px); } }
+        @keyframes rocket-flicker { from { transform: scaleY(0.82); } to { transform: scaleY(1.12); } }
+        @keyframes rocket-twinkle { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+        @keyframes rocket-shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-2px) rotate(-2deg); } 75% { transform: translateX(2px) rotate(2deg); } }
         .project-card {
           background: var(--surface); border-radius: var(--card-radius); box-shadow: var(--card-shadow);
           padding: 18px 20px;
@@ -2446,28 +2539,35 @@ function IdeenWerkstatt({ userEmail, userName, userPhoto, onSignOut, getToken })
           {projects.length === 0 ? (
             <div className="empty">
               <div className="title2">Noch keine Projekte</div>
-              <p>Eine Idee wird automatisch zum Projekt befördert, sobald sie 4 Wochen durchgehend die beste Bewertung aller Ideen hatte.</p>
+              <p>Eine Idee wird automatisch zum Projekt befördert, sobald sie 4 Wochen durchgehend die beste Bewertung aller Ideen hatte. Je mehr Meilensteine, desto größer und schöner wird die Rakete. 🚀</p>
             </div>
           ) : (
-            <div className="project-list">
-              {[...projects].sort((a, b) => b.promotedAt - a.promotedAt).map((p) => {
-                const st = PROJECT_STATUS[p.status] || PROJECT_STATUS.aktiv;
-                return (
-                  <div className="project-card" key={p.id}>
-                    <div className="project-card-top">
-                      <span className="status-avatar" style={{ background: `${st.color}33` }}>{st.icon}</span>
-                      <div className="project-card-title" onClick={() => openProjectEdit(p)}>{p.title}</div>
-                      <button className="link-btn" onClick={(e) => { e.stopPropagation(); demoteToIdea(p.id); }}>Zurück zu Ideen</button>
-                      <button className="link-btn" onClick={(e) => { e.stopPropagation(); removeProject(p.id); }}>Löschen</button>
+            <div className="rocket-sky">
+              <div className="rocket-row">
+                {[...projects].sort((x, y) => (y.milestones || []).length - (x.milestones || []).length).map((p, idx) => {
+                  const st = PROJECT_STATUS[p.status] || PROJECT_STATUS.aktiv;
+                  const level = rocketLevel(p);
+                  const h = rocketHeight(p);
+                  const flying = p.status === "aktiv" || p.status === "problem";
+                  const mCount = (p.milestones || []).length;
+                  return (
+                    <div
+                      key={p.id}
+                      className={`rocket-item rocket-${p.status}`}
+                      style={{ animationDelay: `${(idx % 5) * -0.7}s` }}
+                      onClick={() => openProjectEdit(p)}
+                      title="Projekt öffnen"
+                    >
+                      <div className="rocket-fig" style={{ width: h * 0.62, height: h * 1.1 }}>
+                        <RocketSvg level={level} color={st.color} flying={flying} uid={p.id} />
+                      </div>
+                      <div className="rocket-name">{p.title}</div>
+                      <div className="rocket-badge" style={{ background: st.color, color: st.text }}>{st.icon} {st.label}</div>
+                      <div className="rocket-meta">{"⭐".repeat(level)} · {mCount} Meilenstein{mCount === 1 ? "" : "e"}</div>
                     </div>
-                    {p.description && <p className="project-card-desc">{p.description}</p>}
-                    <div className="project-card-meta">
-                      <span className="project-badge">🏆 Score {p.promotedScore != null ? p.promotedScore.toFixed(1) : "–"}</span>
-                      <span>Projekt seit {new Date(p.promotedAt).toLocaleDateString("de-DE")}</span>
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           )}
         </>
